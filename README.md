@@ -18,19 +18,19 @@ Claude Code records every session as a JSONL file under `~/.claude/projects/`. c
 Want to try it without your own sessions? A synthetic demo transcript ships in the repo:
 
 ```bash
-npx claude-lens demo/demo-session.jsonl
+npx claude-lens-viewer demo/demo-session.jsonl
 ```
 
 ## Use it
 
 ```bash
-npx claude-lens          # scans ~/.claude/projects, opens the viewer
+npx claude-lens-viewer          # scans ~/.claude/projects, opens the viewer
 ```
 
 Or point it at one transcript:
 
 ```bash
-npx claude-lens ~/.claude/projects/<project>/<session>.jsonl
+npx claude-lens-viewer ~/.claude/projects/<project>/<session>.jsonl
 ```
 
 Flags: `--port N` (default 7777), `--no-open`. URL parameters for sharing/screenshots: `?theme=dark|light` forces a theme, `&expand=1` opens with every tool call expanded.
@@ -60,7 +60,7 @@ Install it locally:
 
 ```bash
 npx @vscode/vsce package
-code --install-extension claude-lens-0.1.0.vsix
+code --install-extension claude-lens-viewer-0.4.1.vsix
 ```
 
 ### Publishing to the Marketplace

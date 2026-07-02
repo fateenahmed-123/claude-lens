@@ -2,6 +2,10 @@
 
 ## 0.4.1
 
+- Package renamed to `claude-lens-viewer` (the name `claude-lens` is taken
+  on both the Marketplace and npm). Display name stays "Claude Lens"; the
+  CLI command stays `claude-lens`.
+
 - README screenshots (dark, light, expanded) captured from a synthetic demo.
 - `demo/demo-session.jsonl` ships in the package: try the viewer with
   `npx claude-lens demo/demo-session.jsonl`, no real sessions needed.
