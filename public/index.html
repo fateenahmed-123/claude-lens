@@ -272,6 +272,37 @@
 
   mark { background: color-mix(in oklab, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; }
 
+  /* navigation rail: one tick per prompt, hover to preview, click to jump */
+  #rail {
+    position: fixed; right: 10px; top: 150px; bottom: 48px; width: 12px;
+    display: none; flex-direction: column; gap: 3px; z-index: 4;
+  }
+  body.has-session #rail.on { display: flex; }
+  .tick {
+    flex: 1 1 auto; min-height: 4px; max-height: 26px; width: 100%;
+    border-radius: 2px; background: var(--line); cursor: pointer;
+    transition: background 0.15s ease-out;
+  }
+  .tick:hover { background: var(--faint); }
+  .tick.active { background: var(--accent); }
+  .tick.gone { display: none; }
+  #rail-tip {
+    position: fixed; right: 30px; max-width: 320px; z-index: 6; display: none;
+    background: var(--raised); border: 1px solid var(--line); border-radius: 9px;
+    padding: 8px 12px; font-size: 12.5px; line-height: 1.45; box-shadow: var(--shadow);
+    pointer-events: none;
+  }
+  #rail-tip .n {
+    display: block; color: var(--accent-ink); font-weight: 650; font-size: 10.5px;
+    letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 3px;
+    font-family: var(--mono);
+  }
+  #rail-tip .s {
+    color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+  @media (max-width: 1100px) { #rail, #rail-tip { display: none !important; } }
+
   .session-only { display: none; }
   body.has-session .session-only { display: block; }
 
@@ -329,6 +360,8 @@
 
 <div id="drop-hint">Drop a .jsonl transcript to view it</div>
 <div id="toast" role="status"></div>
+<nav id="rail" aria-label="Prompt navigation"></nav>
+<div id="rail-tip"><span class="n"></span><span class="s"></span></div>
 
 <script>
 'use strict';
@@ -680,6 +713,7 @@ function renderTranscript(fallbackTitle) {
   state.promptEls = [...root.querySelectorAll('.prompt')];
   state.current = { sessionId, cwd, gitBranch, title, firstTs, lastTs };
   document.body.classList.add('has-session');
+  buildRail();
   if (startParams.get('expand')) {
     root.querySelectorAll('.row:not(.think)').forEach((r) => toggleRow(r, true));
   }
@@ -1026,6 +1060,68 @@ async function openSingle() {
   loadSessionText(await res.text(), 'Session');
 }
 
+/* ================================================== navigation rail */
+
+function buildRail() {
+  const rail = $('#rail');
+  rail.innerHTML = '';
+  const els = state.promptEls;
+  rail.classList.toggle('on', els.length > 1);
+  els.forEach((el, i) => {
+    const t = document.createElement('button');
+    t.className = 'tick';
+    t.dataset.i = i;
+    const time = el.querySelector('time');
+    const body = el.querySelector('.body');
+    t.dataset.label = 'Prompt ' + (i + 1) + (time ? ' · ' + time.textContent : '');
+    t.dataset.snippet = body ? body.textContent.trim().replace(/\s+/g, ' ').slice(0, 180) : '';
+    t.setAttribute('aria-label', t.dataset.label);
+    rail.appendChild(t);
+  });
+  updateRailActive();
+}
+
+function updateRailActive() {
+  const els = state.promptEls;
+  if (!els.length) return;
+  const y = window.scrollY + 150;
+  let idx = els.findLastIndex((el) => el.offsetTop <= y);
+  if (idx < 0) idx = 0;
+  $('#rail').querySelectorAll('.tick').forEach((t, i) =>
+    t.classList.toggle('active', i === idx));
+}
+
+let railRaf = 0;
+window.addEventListener('scroll', () => {
+  if (railRaf) return;
+  railRaf = requestAnimationFrame(() => { railRaf = 0; updateRailActive(); });
+}, { passive: true });
+
+$('#rail').addEventListener('click', (ev) => {
+  const t = ev.target.closest('.tick');
+  if (t) state.promptEls[+t.dataset.i].scrollIntoView({ block: 'start', behavior: 'smooth' });
+});
+$('#rail').addEventListener('mouseover', (ev) => {
+  const t = ev.target.closest('.tick');
+  if (!t) return;
+  const tip = $('#rail-tip');
+  $('.n', tip).textContent = t.dataset.label;
+  $('.s', tip).textContent = t.dataset.snippet;
+  tip.style.display = 'block';
+  const r = t.getBoundingClientRect();
+  const h = tip.offsetHeight;
+  tip.style.top = Math.max(8, Math.min(innerHeight - h - 8, r.top + r.height / 2 - h / 2)) + 'px';
+});
+$('#rail').addEventListener('mouseleave', () => { $('#rail-tip').style.display = 'none'; });
+
+/** Hide ticks whose turn is filtered out. */
+function syncRailFilter() {
+  $('#rail').querySelectorAll('.tick').forEach((t) => {
+    const el = state.promptEls[+t.dataset.i];
+    t.classList.toggle('gone', !!el && el.closest('.turn').classList.contains('filtered'));
+  });
+}
+
 /* ============================================ resume + context digest */
 
 let toastT;
@@ -1142,6 +1238,7 @@ $('#search').addEventListener('input', (e) => {
     document.querySelectorAll('#transcript .turn').forEach((t) => {
       t.classList.toggle('filtered', !!q && !t.textContent.toLowerCase().includes(q));
     });
+    syncRailFilter();
   }, 150);
 });
 
