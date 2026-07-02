@@ -64,6 +64,29 @@ function relTime(t) {
   return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** "Today", "Yesterday", weekday within a week, else a short date. */
+function dateBucket(t) {
+  const d = new Date(t), now = new Date();
+  const midnight = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((midnight(now) - midnight(d)) / 86400e3);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+  return d.toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric',
+    year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  });
+}
+
+/** Recency → theme color for the session icon. */
+function ageColor(mtime) {
+  const days = (Date.now() - mtime) / 86400e3;
+  if (days < 1) return new vscode.ThemeColor('charts.orange');
+  if (days < 2) return new vscode.ThemeColor('charts.yellow');
+  if (days < 7) return new vscode.ThemeColor('charts.blue');
+  return undefined; // default muted foreground
+}
+
 class SessionTreeProvider {
   constructor() {
     this._em = new vscode.EventEmitter();
@@ -75,20 +98,43 @@ class SessionTreeProvider {
   async getChildren(el) {
     if (!el) {
       const projects = await scan.listProjects();
-      return projects.map((p) => ({ kind: 'proj', p }));
+      return projects.map((p, i) => ({ kind: 'proj', p, first: i === 0 }));
     }
-    if (el.kind === 'proj') return el.p.sessions.map((s) => ({ kind: 'sess', p: el.p, s }));
+    if (el.kind === 'proj') {
+      // group the project's sessions into date buckets
+      const buckets = [];
+      let cur = null;
+      for (const s of el.p.sessions) {
+        const label = dateBucket(s.mtime);
+        if (!cur || cur.label !== label) {
+          cur = { kind: 'bucket', label, p: el.p, sessions: [] };
+          buckets.push(cur);
+        }
+        cur.sessions.push(s);
+      }
+      return buckets;
+    }
+    if (el.kind === 'bucket') return el.sessions.map((s) => ({ kind: 'sess', p: el.p, s }));
     return [];
   }
 
   async getTreeItem(el) {
     if (el.kind === 'proj') {
       const short = el.p.name.split('/').slice(-2).join('/');
-      const it = new vscode.TreeItem(short,
-        vscode.TreeItemCollapsibleState.Collapsed);
+      const it = new vscode.TreeItem(short, el.first
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.Collapsed);
       it.description = String(el.p.sessions.length);
       it.tooltip = el.p.name;
       it.iconPath = vscode.ThemeIcon.Folder;
+      return it;
+    }
+    if (el.kind === 'bucket') {
+      const it = new vscode.TreeItem(el.label, el.label === 'Today'
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.Collapsed);
+      it.description = String(el.sessions.length);
+      it.iconPath = new vscode.ThemeIcon('calendar', ageColor(el.sessions[0].mtime));
       return it;
     }
     const { p, s } = el;
@@ -98,7 +144,7 @@ class SessionTreeProvider {
     it.description = relTime(s.mtime);
     it.tooltip = [meta.title, meta.firstPrompt, new Date(s.mtime).toLocaleString()]
       .filter(Boolean).join('\n');
-    it.iconPath = new vscode.ThemeIcon('comment-discussion');
+    it.iconPath = new vscode.ThemeIcon('comment-discussion', ageColor(s.mtime));
     it.contextValue = 'session';
     it.command = {
       command: 'claudeLens.openSession',
