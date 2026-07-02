@@ -1,0 +1,128 @@
+{
+  "name": "claude-lens",
+  "displayName": "Claude Lens",
+  "version": "0.4.0",
+  "description": "A rich, minimal viewer for Claude Code CLI session transcripts: prompts, thinking, tool calls, diffs, token stats, resume & context export",
+  "publisher": "fateenahmed",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fateenahmed-123/claude-lens"
+  },
+  "galleryBanner": {
+    "color": "#2a231f",
+    "theme": "dark"
+  },
+  "bin": {
+    "claude-lens": "bin/claude-lens.js"
+  },
+  "main": "./vscode/extension.js",
+  "scripts": {
+    "test": "node test/run.js"
+  },
+  "engines": {
+    "node": ">=18",
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "claudeLens.open",
+        "title": "Claude Lens: Open Session Viewer"
+      },
+      {
+        "command": "claudeLens.refresh",
+        "title": "Refresh Sessions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeLens.openSession",
+        "title": "Claude Lens: Open Specific Session"
+      },
+      {
+        "command": "claudeLens.resumeSession",
+        "title": "Resume in Terminal",
+        "icon": "$(terminal)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claude-lens",
+          "title": "Claude Lens",
+          "icon": "media/lens.svg"
+        }
+      ]
+    },
+    "views": {
+      "claude-lens": [
+        {
+          "id": "claudeLens.sessions",
+          "name": "Sessions",
+          "icon": "media/lens.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "claudeLens.sessions",
+        "contents": "No Claude Code sessions found on this machine.\nSessions appear here after you use the [Claude Code CLI](https://claude.com/claude-code); they are read locally from ~/.claude/projects.\n[Refresh](command:claudeLens.refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudeLens.refresh",
+          "when": "view == claudeLens.sessions",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "claudeLens.resumeSession",
+          "when": "view == claudeLens.sessions && viewItem == session",
+          "group": "inline"
+        },
+        {
+          "command": "claudeLens.resumeSession",
+          "when": "view == claudeLens.sessions && viewItem == session",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "claudeLens.openSession",
+          "when": "false"
+        },
+        {
+          "command": "claudeLens.resumeSession",
+          "when": "false"
+        }
+      ]
+    }
+  },
+  "files": [
+    "bin",
+    "lib",
+    "public",
+    "vscode",
+    "media",
+    "icon.png",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "transcript",
+    "viewer",
+    "jsonl",
+    "session"
+  ],
+  "license": "MIT"
+}
