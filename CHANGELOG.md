@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- README screenshots (dark, light, expanded) captured from a synthetic demo.
+- `demo/demo-session.jsonl` ships in the package: try the viewer with
+  `npx claude-lens demo/demo-session.jsonl`, no real sessions needed.
+- URL parameters `?theme=dark|light` and `&expand=1`.
+- Marketplace publisher set to `fahmed`.
+
 ## 0.4.0
 
 - Security hardening: Host-header check on the local server (blocks DNS

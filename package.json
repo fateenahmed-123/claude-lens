@@ -1,9 +1,9 @@
 {
   "name": "claude-lens",
   "displayName": "Claude Lens",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A rich, minimal viewer for Claude Code CLI session transcripts: prompts, thinking, tool calls, diffs, token stats, resume & context export",
-  "publisher": "fateenahmed",
+  "publisher": "fahmed",
   "icon": "icon.png",
   "repository": {
     "type": "git",
@@ -111,6 +111,7 @@
     "lib",
     "public",
     "vscode",
+    "demo",
     "media",
     "icon.png",
     "README.md",

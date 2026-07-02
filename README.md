@@ -4,6 +4,23 @@ A rich, minimal viewer for [Claude Code](https://claude.com/claude-code) CLI ses
 
 Claude Code records every session as a JSONL file under `~/.claude/projects/`. claude-lens turns those machine logs into a readable record: what you asked, what Claude thought, every tool call with its result, diffs for edits, subagent runs, token totals, and timing. All local, zero dependencies.
 
+![claude-lens dark theme](docs/viewer-dark.png)
+
+<details>
+<summary>More screenshots: light theme, expanded tool calls</summary>
+
+![light theme](docs/viewer-light.png)
+
+![expanded tool calls](docs/viewer-expanded.png)
+
+</details>
+
+Want to try it without your own sessions? A synthetic demo transcript ships in the repo:
+
+```bash
+npx claude-lens demo/demo-session.jsonl
+```
+
 ## Use it
 
 ```bash
@@ -16,7 +33,7 @@ Or point it at one transcript:
 npx claude-lens ~/.claude/projects/<project>/<session>.jsonl
 ```
 
-Flags: `--port N` (default 7777), `--no-open`.
+Flags: `--port N` (default 7777), `--no-open`. URL parameters for sharing/screenshots: `?theme=dark|light` forces a theme, `&expand=1` opens with every tool call expanded.
 
 You can also just open the viewer and **drag any `.jsonl` transcript onto the page**; it parses in the browser, so it works even without the file being under `~/.claude/projects`.
 

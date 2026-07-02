@@ -432,6 +432,11 @@ function mdInline(s) {
 /* ================================================== transcript parsing */
 
 const state = { entries: [], detailData: [], promptEls: [], theme: localStorage.lensTheme || '' };
+const startParams = new URLSearchParams(location.search);
+{
+  const q = startParams.get('theme');
+  if (q === 'dark' || q === 'light') state.theme = q;
+}
 if (state.theme) document.documentElement.dataset.theme = state.theme;
 
 /* ---- data source: HTTP API (CLI server) or VS Code webview bridge ---- */
@@ -675,6 +680,9 @@ function renderTranscript(fallbackTitle) {
   state.promptEls = [...root.querySelectorAll('.prompt')];
   state.current = { sessionId, cwd, gitBranch, title, firstTs, lastTs };
   document.body.classList.add('has-session');
+  if (startParams.get('expand')) {
+    root.querySelectorAll('.row:not(.think)').forEach((r) => toggleRow(r, true));
+  }
   window.scrollTo(0, 0);
 }
 
