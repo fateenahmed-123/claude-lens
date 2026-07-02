@@ -295,7 +295,7 @@
 <body>
 
 <aside id="sidebar">
-  <div id="brand"><span class="name">claude-lens</span><span class="ver">v0.1</span></div>
+  <div id="brand"><span class="name">claude-lens</span><span class="ver" id="ver">__LENS_VERSION__</span></div>
   <div id="view-toggle" role="tablist" aria-label="Sidebar arrangement">
     <button data-v="date">By date</button>
     <button data-v="project">By project</button>
@@ -1172,6 +1172,9 @@ document.addEventListener('drop', async (e) => {
   loadSessionText(await f.text(), f.name.replace(/\.jsonl$/, ''));
   rememberUrl();
 });
+
+// hosts (CLI server / extension) substitute the real version; hide if raw
+if ($('#ver').textContent.startsWith('__')) $('#ver').textContent = '';
 
 loadIndex();
 if (vscodeApi) vscodeApi.postMessage({ cmd: 'ready' });

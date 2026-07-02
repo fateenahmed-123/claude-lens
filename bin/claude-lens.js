@@ -101,7 +101,11 @@ const server = http.createServer(async (req, res) => {
     const fp = path.normalize(path.join(PUBLIC_DIR, rel));
     if (!fp.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(404); return res.end(); }
     try {
-      const body = await fsp.readFile(fp);
+      let body = await fsp.readFile(fp);
+      if (fp.endsWith('index.html')) {
+        body = Buffer.from(body.toString('utf8')
+          .replace('__LENS_VERSION__', 'v' + require('../package.json').version));
+      }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream' });
       res.end(body);
     } catch {

@@ -136,6 +136,7 @@ function openPanel(context, sel) {
   // Follow the editor theme instead of the OS preference.
   const dark = vscode.window.activeColorTheme.kind !== vscode.ColorThemeKind.Light;
   html = html.replace('<html lang="en">', `<html lang="en" data-theme="${dark ? 'dark' : 'light'}">`);
+  html = html.replace('__LENS_VERSION__', 'v' + require('../package.json').version);
   panel.webview.html = html;
 
   panel.webview.onDidReceiveMessage(async (msg) => {
