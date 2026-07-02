@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+- Navigation rail for long sessions: one tick per prompt on the right edge;
+  hover previews the prompt, click jumps to it, scroll tracks your position.
+- Sessions tree groups by date (Today/Yesterday/weekday/date) with
+  recency-tinted icons (orange today, yellow yesterday, blue this week).
+- Sidebar is now fixed; it no longer scrolls away on long transcripts.
+- Version badge in the UI reads package.json instead of a hardcoded string.
+
 ## 0.4.1
 
 - Package renamed to `claude-lens-viewer` (the name `claude-lens` is taken
