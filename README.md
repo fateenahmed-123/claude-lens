@@ -122,6 +122,14 @@ Each JSONL line is a typed entry. The ones the viewer renders:
 
 Token totals are deduplicated by `requestId`, since one API response logs several assistant entries sharing the same usage.
 
+## Contributing
+
+Issues and PRs welcome. The codebase is deliberately small and dependency-free:
+four JS files and one HTML file — see "How it works" above for the map.
+Before submitting, run `npm test` (it includes live server security checks).
+Note the transcript format is Claude Code's internal JSONL and changes
+between releases; parsers should degrade gracefully on unknown entry types.
+
 ## License
 
 MIT
