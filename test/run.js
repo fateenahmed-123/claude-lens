@@ -101,8 +101,19 @@ assert(scan.resolveSession('proj', 'x.txt') === null, 'extension check');
 assert(scan.resolveSession('proj', 'x.jsonl') !== null, 'valid path accepted');
 ok('path traversal rejected');
 
-section('custom sessions root');
+section('usage stats');
 const os = require('os');
+const utmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-usage-'));
+fs.writeFileSync(path.join(utmp, 'u.jsonl'), fixture);
+scan.usageStats(path.join(utmp, 'u.jsonl')).then((u) => {
+  assert(u.models['claude-test-1'], 'model aggregated');
+  assert(u.models['claude-test-1'].in === 10 && u.models['claude-test-1'].out === 20, 'requestId dedup + sums');
+  assert(u.byDay['2026-07-01'] && u.byDay['2026-07-01'].out === 20, 'per-day bucket');
+  fs.rmSync(utmp, { recursive: true, force: true });
+  ok('usage scan dedupes by requestId and buckets by day');
+}).catch((err) => { console.error('FAILED:', err.message); process.exit(1); });
+
+section('custom sessions root');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-test-'));
 fs.writeFileSync(path.join(tmp, 'loose-session.jsonl'), fixture);
 scan.setRoot(tmp);

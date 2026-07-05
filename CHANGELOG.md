@@ -2,6 +2,10 @@
 
 ## 0.4.10
 
+- Usage metrics in the panel dashboard: tokens and estimated cost (at API
+  rates, computed from local logs) for today and the last 30 days, plus top
+  model. Full-file scans are cached per session file, so only new/changed
+  sessions are re-read.
 - Cross-session search in the panel dashboard: type to filter every session
   on the machine by title, first prompt, or project, with match
   highlighting; click a result to open it, or copy/resume inline. The list

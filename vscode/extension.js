@@ -256,6 +256,34 @@ function openPanel(context, sel) {
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/**
+ * Per-MTok USD rates [prefix, input, output]; cache read bills 0.1× input,
+ * cache write 1.25× input. Specific prefixes before generic. Rates as of
+ * 2026-06 (Sonnet 5 at introductory pricing); unknown models are counted
+ * in tokens but excluded from cost.
+ */
+const PRICING = [
+  ['claude-fable-5', 10, 50], ['claude-mythos', 10, 50],
+  ['claude-opus-4-5', 5, 25], ['claude-opus-4-6', 5, 25],
+  ['claude-opus-4-7', 5, 25], ['claude-opus-4-8', 5, 25],
+  ['claude-opus', 15, 75],
+  ['claude-sonnet-5', 2, 10],
+  ['claude-sonnet', 3, 15],
+  ['claude-haiku', 1, 5],
+];
+
+function usageCost(model, u) {
+  const p = PRICING.find(([prefix]) => model.startsWith(prefix));
+  if (!p) return null;
+  return ((u.in || 0) * p[1] + (u.cr || 0) * p[1] * 0.1 + (u.cw || 0) * p[1] * 1.25 + (u.out || 0) * p[2]) / 1e6;
+}
+
+const totalTok = (u) => (u.in || 0) + (u.out || 0) + (u.cr || 0) + (u.cw || 0);
+const fmtTok = (n) => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B'
+  : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M'
+  : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
+const fmtUsd = (n) => n >= 100 ? '$' + Math.round(n) : '$' + n.toFixed(2);
+
 class DashboardProvider {
   constructor(context) { this.context = context; }
 
@@ -279,6 +307,69 @@ class DashboardProvider {
       }
     }, null, this.context.subscriptions);
     this.render();
+  }
+
+  /**
+   * Token usage across every session, scanned once per file and cached by
+   * (size, mtime) in globalState so subsequent opens only read changed files.
+   * Runs after the initial render and fills the Usage column via postMessage.
+   */
+  async computeUsage(all) {
+    const cache = this.context.globalState.get('lens.usageCache.v1', {});
+    let dirty = false;
+    let i = 0;
+    const worker = async () => {
+      for (;;) {
+        const idx = i++;
+        if (idx >= all.length) return;
+        const { p, s } = all[idx];
+        const fp = path.join(scan.getRoot(), p.slug, s.file);
+        const key = fp;
+        const hit = cache[key];
+        if (hit && hit.size === s.size && hit.mtime === s.mtime) continue;
+        try {
+          cache[key] = { size: s.size, mtime: s.mtime, stats: await scan.usageStats(fp) };
+          dirty = true;
+        } catch { /* unreadable file — skip */ }
+      }
+    };
+    await Promise.all(Array.from({ length: 3 }, worker));
+    if (dirty) await this.context.globalState.update('lens.usageCache.v1', cache);
+
+    // aggregate: today, last 30 days, per model
+    const today = new Date().toISOString().slice(0, 10);
+    const cutoff = new Date(Date.now() - 30 * 86400e3).toISOString().slice(0, 10);
+    const agg = { today: { tok: 0, usd: 0 }, month: { tok: 0, usd: 0 }, models: {}, unpriced: 0 };
+    const live = new Set(all.map(({ p, s }) => path.join(scan.getRoot(), p.slug, s.file)));
+    for (const [key, entry] of Object.entries(cache)) {
+      if (!live.has(key)) continue;
+      const { models, byDay } = entry.stats || {};
+      for (const [m, u] of Object.entries(models || {})) {
+        agg.models[m] = (agg.models[m] || 0) + totalTok(u);
+      }
+      for (const [day, u] of Object.entries(byDay || {})) {
+        if (day < cutoff) continue;
+        const tok = totalTok(u);
+        // day-level model split isn't stored; price at the file's dominant model
+        const top = Object.entries(entry.stats.models || {}).sort((a, b) => totalTok(b[1]) - totalTok(a[1]))[0];
+        const usd = top ? usageCost(top[0], u) : null;
+        agg.month.tok += tok;
+        if (usd == null) agg.unpriced += tok; else agg.month.usd += usd;
+        if (day === today) { agg.today.tok += tok; if (usd != null) agg.today.usd += usd; }
+      }
+    }
+    return agg;
+  }
+
+  usageHtml(agg) {
+    const top = Object.entries(agg.models).sort((a, b) => b[1] - a[1])[0];
+    let html = '<h3>Usage</h3>';
+    html += `<div class="stat"><b>${esc(fmtUsd(agg.today.usd))}</b><span>today · ${esc(fmtTok(agg.today.tok))} tok</span></div>`;
+    html += `<div class="stat"><b>${esc(fmtUsd(agg.month.usd))}</b><span>30 days · ${esc(fmtTok(agg.month.tok))} tok</span></div>`;
+    if (top) html += `<div class="foot">top model: ${esc(top[0].replace(/^claude-/, ''))}</div>`;
+    html += '<div class="foot">≈ at API rates, from local logs</div>';
+    if (agg.unpriced) html += `<div class="foot">${esc(fmtTok(agg.unpriced))} tok unpriced</div>`;
+    return html;
   }
 
   /** Meta for every session, concurrency-limited and cached across renders. */
@@ -354,6 +445,7 @@ class DashboardProvider {
       .stats { flex: none; display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
       .stat b { font-size: 18px; font-weight: 600; }
       .stat span { color: var(--vscode-descriptionForeground); margin-left: 5px; }
+      .foot { color: var(--vscode-descriptionForeground); font-size: 10.5px; margin-top: 3px; }
       #chart { flex: none; width: 190px; display: flex; align-items: flex-end; gap: 4px; height: 74px; }
       .bar { flex: 1; background: var(--vscode-charts-orange); opacity: 0.45; border-radius: 2px 2px 0 0; min-height: 3px; }
       .bar.today { opacity: 1; }
@@ -386,6 +478,7 @@ class DashboardProvider {
         <div class="stat"><b>${week}</b><span>this week</span></div>
         <div class="stat"><b>${all.length}</b><span>total sessions</span></div>
       </div>
+      <div class="stats" id="usage"><h3>Usage</h3><div class="foot">computing…</div></div>
       <div><h3>14 days</h3><div id="chart">${bars}</div></div>
       <div id="sessions">
         <div id="shead"><h3>Sessions</h3>
@@ -397,6 +490,12 @@ class DashboardProvider {
     <script>
       const vs = acquireVsCodeApi();
       const SESSIONS = ${payload};
+      window.addEventListener('message', (e) => {
+        if (e.data && e.data.cmd === 'usage') {
+          const el = document.getElementById('usage');
+          if (el) el.innerHTML = e.data.html;
+        }
+      });
       const escH = (s) => String(s).replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
       const rel = (t) => {
@@ -444,6 +543,12 @@ class DashboardProvider {
         else vs.postMessage({ cmd: 'open', project: d.project, file: d.file });
       });
     </script></body></html>`;
+
+    if (all.length) {
+      this.computeUsage(all).then((agg) => {
+        if (this.view) this.view.webview.postMessage({ cmd: 'usage', html: this.usageHtml(agg) });
+      }).catch(() => { /* usage stays at placeholder */ });
+    }
   }
 }
 
