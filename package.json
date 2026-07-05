@@ -7,7 +7,7 @@
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/fateenahmed-123/claude-lens"
+    "url": "git+https://github.com/fateenahmed-123/claude-lens.git"
   },
   "galleryBanner": {
     "color": "#2a231f",
