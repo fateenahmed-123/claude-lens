@@ -35,6 +35,16 @@ npx claude-lens-viewer ~/.claude/projects/<project>/<session>.jsonl
 
 Flags: `--port N` (default 7777), `--no-open`. URL parameters for sharing/screenshots: `?theme=dark|light` forces a theme, `&expand=1` opens with every tool call expanded.
 
+### Sessions stored somewhere else?
+
+The default root is `~/.claude/projects`. If `CLAUDE_CONFIG_DIR` is set (Claude Code's own relocation mechanism), claude-lens automatically reads `$CLAUDE_CONFIG_DIR/projects` instead. For anything else — backups, transcripts copied from another machine — point at it directly:
+
+```bash
+npx claude-lens-viewer --dir /path/to/folder
+```
+
+`--dir` accepts either a real projects tree or any flat folder of `.jsonl` transcripts. In the VS Code extension, set **`claudeLens.projectsDir`** in Settings for the same effect. The sidebar footer always shows which folder is being read.
+
 You can also just open the viewer and **drag any `.jsonl` transcript onto the page**; it parses in the browser, so it works even without the file being under `~/.claude/projects`.
 
 ### In the viewer

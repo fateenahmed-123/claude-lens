@@ -919,6 +919,7 @@ async function loadIndex() {
     $('#proj-list').innerHTML = '<p class="sysnote" style="padding:0 10px">Server unreachable. Drop a .jsonl file to view it.</p>';
     return;
   }
+  if (indexData.root) $('#side-foot').innerHTML = 'reading <code>' + esc(indexData.root) + '</code>';
   renderSidebar();
 
   const q = new URLSearchParams(location.search);

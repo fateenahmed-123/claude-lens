@@ -101,6 +101,23 @@ assert(scan.resolveSession('proj', 'x.txt') === null, 'extension check');
 assert(scan.resolveSession('proj', 'x.jsonl') !== null, 'valid path accepted');
 ok('path traversal rejected');
 
+section('custom sessions root');
+const os = require('os');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-test-'));
+fs.writeFileSync(path.join(tmp, 'loose-session.jsonl'), fixture);
+scan.setRoot(tmp);
+assert(scan.getRoot() === tmp, 'setRoot applies');
+scan.listProjects().then((projects) => {
+  assert(projects.length === 1 && projects[0].slug === '.', 'loose folder becomes a pseudo-project');
+  assert(projects[0].sessions[0].file === 'loose-session.jsonl', 'loose session listed');
+  assert(scan.resolveSession('.', 'loose-session.jsonl') !== null, 'loose session resolvable');
+  assert(scan.resolveSession('..', 'x.jsonl') === null, 'traversal still blocked under custom root');
+  scan.setRoot(null);
+  assert(scan.getRoot() !== tmp, 'setRoot(null) restores default');
+  fs.rmSync(tmp, { recursive: true, force: true });
+  ok('custom --dir root with loose .jsonl files');
+}).catch((err) => { console.error('FAILED:', err.message); process.exit(1); });
+
 /* ------------------------------------------------------- server tests */
 
 async function serverTests() {

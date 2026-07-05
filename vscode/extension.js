@@ -18,9 +18,21 @@ let panel = null;
 let panelReady = false;
 let pendingOpen = null;
 
+function applyProjectsDirSetting() {
+  // Empty setting → scan.js default (~/.claude/projects or $CLAUDE_CONFIG_DIR/projects)
+  scan.setRoot(vscode.workspace.getConfiguration('claudeLens').get('projectsDir') || null);
+}
+
 function activate(context) {
+  applyProjectsDirSetting();
   const tree = new SessionTreeProvider();
   context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('claudeLens.projectsDir')) {
+        applyProjectsDirSetting();
+        tree.refresh();
+      }
+    }),
     vscode.window.registerTreeDataProvider('claudeLens.sessions', tree),
     vscode.commands.registerCommand('claudeLens.open', () => openPanel(context)),
     vscode.commands.registerCommand('claudeLens.refresh', () => tree.refresh()),
@@ -49,7 +61,7 @@ async function resumeFromTree(el) {
   if (!el || el.kind !== 'sess') return;
   let cwd = null;
   try {
-    cwd = (await scan.sessionMeta(path.join(scan.PROJECTS_DIR, el.p.slug, el.s.file))).cwd;
+    cwd = (await scan.sessionMeta(path.join(scan.getRoot(), el.p.slug, el.s.file))).cwd;
   } catch { /* resume without cwd */ }
   resumeInTerminal(el.s.id, cwd);
 }
@@ -139,7 +151,7 @@ class SessionTreeProvider {
     }
     const { p, s } = el;
     let meta = {};
-    try { meta = await scan.sessionMeta(path.join(scan.PROJECTS_DIR, p.slug, s.file)); } catch { /* uuid label */ }
+    try { meta = await scan.sessionMeta(path.join(scan.getRoot(), p.slug, s.file)); } catch { /* uuid label */ }
     const it = new vscode.TreeItem(meta.title || meta.firstPrompt || s.id.slice(0, 8) + '…');
     it.description = relTime(s.mtime);
     it.tooltip = [meta.title, meta.firstPrompt, new Date(s.mtime).toLocaleString()]
@@ -197,7 +209,7 @@ function openPanel(context, sel) {
     const reply = (ok, data, error) => panel && panel.webview.postMessage({ id: msg.id, ok, data, error });
     try {
       if (msg.cmd === 'projects') {
-        reply(true, { root: scan.PROJECTS_DIR, single: false, projects: await scan.listProjects() });
+        reply(true, { root: scan.getRootDisplay(), single: false, projects: await scan.listProjects() });
       } else if (msg.cmd === 'meta') {
         const f = scan.resolveSession(msg.args.project, msg.args.file);
         if (!f) return reply(false, null, 'bad path');

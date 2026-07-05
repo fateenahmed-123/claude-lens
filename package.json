@@ -68,6 +68,16 @@
         }
       ]
     },
+    "configuration": {
+      "title": "Claude Lens",
+      "properties": {
+        "claudeLens.projectsDir": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder to read sessions from. Leave empty for the default: `~/.claude/projects`, or `$CLAUDE_CONFIG_DIR/projects` when that environment variable is set. Accepts a Claude Code projects tree or any folder containing `.jsonl` transcripts."
+        }
+      }
+    },
     "viewsWelcome": [
       {
         "view": "claudeLens.sessions",

@@ -31,11 +31,15 @@ let noOpen = false;
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === '--port' || a === '-p') port = Number(args[++i]) || port;
+  else if (a === '--dir' || a === '-d') scan.setRoot(args[++i]);
   else if (a === '--no-open') noOpen = true;
   else if (a === '--help' || a === '-h') {
-    console.log(`claude-lens [file.jsonl] [--port N] [--no-open]
+    console.log(`claude-lens [file.jsonl] [--dir path] [--port N] [--no-open]
 
-Visualize Claude Code CLI sessions from ~/.claude/projects/.
+Visualize Claude Code CLI sessions. Reads ~/.claude/projects/ by default,
+or $CLAUDE_CONFIG_DIR/projects when that variable is set.
+  --dir path   read sessions from a different folder (a projects tree
+               or any folder containing .jsonl transcripts)
 Pass a .jsonl path to open a single transcript directly.`);
     process.exit(0);
   } else if (a.endsWith('.jsonl')) singleFile = path.resolve(a);
@@ -68,7 +72,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/api/projects') {
       const projects = await scan.listProjects();
-      return json(res, 200, { root: scan.PROJECTS_DIR, single: !!singleFile, projects });
+      return json(res, 200, { root: scan.getRootDisplay(), single: !!singleFile, projects });
     }
 
     if (url.pathname === '/api/meta') {

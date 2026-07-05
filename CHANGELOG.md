@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.5
+
+- Custom sessions locations: `CLAUDE_CONFIG_DIR` is honored automatically,
+  `--dir <path>` on the CLI and the `claudeLens.projectsDir` setting in
+  VS Code override the root explicitly. A flat folder of `.jsonl` files
+  works too (shown as one project). The sidebar footer shows the active root.
+- Dark theme moved from warm brown to near-black graphite (0.4.4).
+
 ## 0.4.2
 
 - Navigation rail for long sessions: one tick per prompt on the right edge;
