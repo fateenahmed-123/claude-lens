@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.10
+
+- Cross-session search in the panel dashboard: type to filter every session
+  on the machine by title, first prompt, or project, with match
+  highlighting; click a result to open it, or copy/resume inline. The list
+  fills the panel height and scrolls.
+
 ## 0.4.6
 
 - Panel-area dashboard (next to Terminal/Ports): today/this-week/total

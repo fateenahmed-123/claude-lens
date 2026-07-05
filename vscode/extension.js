@@ -281,6 +281,28 @@ class DashboardProvider {
     this.render();
   }
 
+  /** Meta for every session, concurrency-limited and cached across renders. */
+  async allMetas(all) {
+    this.metaCache = this.metaCache || new Map();
+    const out = new Array(all.length);
+    let i = 0;
+    const worker = async () => {
+      for (;;) {
+        const idx = i++;
+        if (idx >= all.length) return;
+        const { p, s } = all[idx];
+        const key = p.slug + '/' + s.file + ':' + s.mtime;
+        if (!this.metaCache.has(key)) {
+          this.metaCache.set(key,
+            await scan.sessionMeta(path.join(scan.getRoot(), p.slug, s.file)).catch(() => ({})));
+        }
+        out[idx] = this.metaCache.get(key);
+      }
+    };
+    await Promise.all(Array.from({ length: 8 }, worker));
+    return out;
+  }
+
   async render() {
     if (!this.view) return;
     let projects = [];
@@ -301,16 +323,16 @@ class DashboardProvider {
     const max = Math.max(1, ...days.map(d => d.n));
     const fmtMB = (b) => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.round(b / 1024) + ' KB';
 
-    const recent = all.slice(0, 8);
-    const metas = await Promise.all(recent.map(({ p, s }) =>
-      scan.sessionMeta(path.join(scan.getRoot(), p.slug, s.file)).catch(() => ({}))));
-
-    const rel = (t) => {
-      const d = Date.now() - t;
-      if (d < 3600e3) return Math.max(1, Math.round(d / 60e3)) + 'm';
-      if (d < 86400e3) return Math.round(d / 3600e3) + 'h';
-      return Math.round(d / 86400e3) + 'd';
-    };
+    const metas = await this.allMetas(all);
+    const sessions = all.map(({ p, s }, i) => {
+      const m = metas[i] || {};
+      return {
+        project: p.slug, projName: p.name.split('/').pop(), file: s.file,
+        sid: s.id, cwd: m.cwd || '', mtime: s.mtime, size: s.size,
+        title: m.title || m.firstPrompt || s.id.slice(0, 8) + '…',
+        prompt: (m.firstPrompt || '').slice(0, 300),
+      };
+    });
 
     const bars = days.map((d, i) => {
       const h = d.n ? Math.max(8, Math.round(d.n / max * 100)) : 4;
@@ -320,25 +342,13 @@ class DashboardProvider {
         title="${esc(label)}: ${d.n} session${d.n === 1 ? '' : 's'} · ${fmtMB(d.bytes)}"></div>`;
     }).join('');
 
-    const rows = recent.map(({ p, s }, i) => {
-      const m = metas[i] || {};
-      const title = m.title || m.firstPrompt || s.id.slice(0, 8) + '…';
-      const proj = p.name.split('/').pop();
-      const data = `data-project="${esc(p.slug)}" data-file="${esc(s.file)}" data-sid="${esc(s.id)}" data-cwd="${esc(m.cwd || '')}"`;
-      return `<div class="row" ${data}>
-        <span class="t" title="${esc(title)}">${esc(title)}</span>
-        <span class="m">${esc(proj)} · ${rel(s.mtime)}</span>
-        <span class="acts">
-          <button data-act="copy" title="Copy resume command">⧉</button>
-          <button data-act="resume" title="Resume in terminal">▶</button>
-        </span>
-      </div>`;
-    }).join('');
+    const payload = JSON.stringify(sessions).replace(/</g, '\\u003c');
 
     this.view.webview.html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      html, body { height: 100%; }
       body { font: 12px var(--vscode-font-family); color: var(--vscode-foreground);
-             margin: 0; padding: 10px 14px; user-select: none; }
-      #wrap { display: flex; gap: 26px; align-items: stretch; max-width: 900px; }
+             margin: 0; padding: 10px 14px; user-select: none; box-sizing: border-box; }
+      #wrap { display: flex; gap: 26px; align-items: stretch; height: 100%; box-sizing: border-box; }
       h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;
            color: var(--vscode-descriptionForeground); font-weight: 600; }
       .stats { flex: none; display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
@@ -348,10 +358,19 @@ class DashboardProvider {
       .bar { flex: 1; background: var(--vscode-charts-orange); opacity: 0.45; border-radius: 2px 2px 0 0; min-height: 3px; }
       .bar.today { opacity: 1; }
       .bar.zero { background: var(--vscode-descriptionForeground); opacity: 0.18; }
-      #recent { flex: 1; min-width: 0; }
+      #sessions { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      #shead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+      #shead h3 { margin: 0; flex: none; }
+      #q { flex: 1; max-width: 340px; font: 12px var(--vscode-font-family);
+           color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+           border: 1px solid var(--vscode-input-border, transparent); border-radius: 4px; padding: 3px 8px; outline: none; }
+      #q:focus { border-color: var(--vscode-focusBorder); }
+      #count { color: var(--vscode-descriptionForeground); font-size: 11px; flex: none; }
+      #list { overflow-y: auto; flex: 1; min-height: 0; }
       .row { display: flex; align-items: center; gap: 8px; padding: 2.5px 6px; border-radius: 4px; cursor: pointer; }
       .row:hover { background: var(--vscode-list-hoverBackground); }
       .row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+      .row .t mark { background: none; color: var(--vscode-charts-orange); font-weight: 600; }
       .row .m { color: var(--vscode-descriptionForeground); flex: none; font-size: 11px; }
       .acts { flex: none; visibility: hidden; }
       .row:hover .acts { visibility: visible; }
@@ -368,10 +387,53 @@ class DashboardProvider {
         <div class="stat"><b>${all.length}</b><span>total sessions</span></div>
       </div>
       <div><h3>14 days</h3><div id="chart">${bars}</div></div>
-      <div id="recent"><h3>Recent</h3>${rows}</div>
+      <div id="sessions">
+        <div id="shead"><h3>Sessions</h3>
+          <input id="q" type="text" placeholder="Search all sessions…" aria-label="Search sessions">
+          <span id="count"></span></div>
+        <div id="list"></div>
+      </div>
     </div>` : '<div class="empty">No Claude Code sessions found. They appear here once you use the Claude Code CLI.</div>'}
     <script>
       const vs = acquireVsCodeApi();
+      const SESSIONS = ${payload};
+      const escH = (s) => String(s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const rel = (t) => {
+        const d = Date.now() - t;
+        if (d < 3600e3) return Math.max(1, Math.round(d / 60e3)) + 'm';
+        if (d < 86400e3) return Math.round(d / 3600e3) + 'h';
+        return Math.round(d / 86400e3) + 'd';
+      };
+      const hi = (text, q) => {
+        if (!q) return escH(text);
+        const i = text.toLowerCase().indexOf(q);
+        if (i < 0) return escH(text);
+        return escH(text.slice(0, i)) + '<mark>' + escH(text.slice(i, i + q.length)) + '</mark>' + escH(text.slice(i + q.length));
+      };
+      const list = document.getElementById('list');
+      const count = document.getElementById('count');
+      function show(q) {
+        q = (q || '').trim().toLowerCase();
+        const hits = q
+          ? SESSIONS.filter((s) => s.title.toLowerCase().includes(q) || s.prompt.toLowerCase().includes(q)
+              || s.projName.toLowerCase().includes(q))
+          : SESSIONS;
+        const shown = hits.slice(0, 60);
+        count.textContent = q ? hits.length + ' match' + (hits.length === 1 ? '' : 'es') : 'recent';
+        list.innerHTML = shown.map((s) => {
+          const sub = q && !s.title.toLowerCase().includes(q) && s.prompt.toLowerCase().includes(q)
+            ? '<div class="m" style="padding:0 6px 3px 6px">' + hi(s.prompt.slice(0, 120), q) + '</div>' : '';
+          return '<div class="row" data-project="' + escH(s.project) + '" data-file="' + escH(s.file) +
+            '" data-sid="' + escH(s.sid) + '" data-cwd="' + escH(s.cwd) + '">' +
+            '<span class="t" title="' + escH(s.title) + '">' + hi(s.title, q) + '</span>' +
+            '<span class="m">' + escH(s.projName) + ' · ' + rel(s.mtime) + '</span>' +
+            '<span class="acts"><button data-act="copy" title="Copy resume command">⧉</button>' +
+            '<button data-act="resume" title="Resume in terminal">▶</button></span></div>' + sub;
+        }).join('') || '<div class="empty">No sessions match.</div>';
+      }
+      show('');
+      document.getElementById('q').addEventListener('input', (e) => show(e.target.value));
       document.addEventListener('click', (e) => {
         const row = e.target.closest('.row');
         if (!row) return;
