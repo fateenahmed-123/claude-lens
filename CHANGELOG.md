@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.13
+
+- Per-project breakdown fills the dashboard's lower-left: sessions, tokens,
+  and estimated cost per project with token-share bars, sorted by usage.
+
 ## 0.4.10
 
 - Usage metrics in the panel dashboard: tokens and estimated cost (at API

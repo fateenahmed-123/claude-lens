@@ -314,7 +314,7 @@ class DashboardProvider {
    * (size, mtime) in globalState so subsequent opens only read changed files.
    * Runs after the initial render and fills the Usage column via postMessage.
    */
-  async computeUsage(all) {
+  async computeUsage(all, fileProj) {
     const cache = this.context.globalState.get('lens.usageCache.v1', {});
     let dirty = false;
     let i = 0;
@@ -339,13 +339,22 @@ class DashboardProvider {
     // aggregate: today, last 30 days, per model
     const today = new Date().toISOString().slice(0, 10);
     const cutoff = new Date(Date.now() - 30 * 86400e3).toISOString().slice(0, 10);
-    const agg = { today: { tok: 0, usd: 0 }, month: { tok: 0, usd: 0 }, models: {}, unpriced: 0 };
+    const agg = { today: { tok: 0, usd: 0 }, month: { tok: 0, usd: 0 }, models: {}, projects: {}, unpriced: 0 };
+    for (const { p, s } of all) {
+      const name = p.name.split('/').pop();
+      const proj = agg.projects[name] = agg.projects[name] || { tok: 0, usd: 0, sessions: 0 };
+      proj.sessions++;
+    }
     const live = new Set(all.map(({ p, s }) => path.join(scan.getRoot(), p.slug, s.file)));
     for (const [key, entry] of Object.entries(cache)) {
       if (!live.has(key)) continue;
       const { models, byDay } = entry.stats || {};
+      const proj = agg.projects[fileProj.get(key)] || { tok: 0, usd: 0, sessions: 0 };
       for (const [m, u] of Object.entries(models || {})) {
         agg.models[m] = (agg.models[m] || 0) + totalTok(u);
+        proj.tok += totalTok(u);
+        const usd = usageCost(m, u);
+        if (usd != null) proj.usd += usd;
       }
       for (const [day, u] of Object.entries(byDay || {})) {
         if (day < cutoff) continue;
@@ -359,6 +368,20 @@ class DashboardProvider {
       }
     }
     return agg;
+  }
+
+  projectsHtml(agg) {
+    const rows = Object.entries(agg.projects)
+      .filter(([, v]) => v.sessions)
+      .sort((a, b) => b[1].tok - a[1].tok);
+    if (!rows.length) return '<h3>Projects</h3>';
+    const max = Math.max(1, ...rows.map(([, v]) => v.tok));
+    return '<h3>Projects</h3>' + rows.map(([name, v]) =>
+      `<div class="prow"><div class="prow-top"><span class="pn" title="${esc(name)}">${esc(name)}</span>` +
+      `<span class="pm">${v.sessions} session${v.sessions === 1 ? '' : 's'} · ${esc(fmtTok(v.tok))} tok` +
+      `${v.usd ? ' · ' + esc(fmtUsd(v.usd)) : ''}</span></div>` +
+      `<div class="pbar"><div style="width:${Math.max(2, Math.round(v.tok / max * 100))}%"></div></div></div>`
+    ).join('');
   }
 
   usageHtml(agg) {
@@ -440,6 +463,16 @@ class DashboardProvider {
       body { font: 12px var(--vscode-font-family); color: var(--vscode-foreground);
              margin: 0; padding: 10px 14px; user-select: none; box-sizing: border-box; }
       #wrap { display: flex; gap: 26px; align-items: stretch; height: 100%; box-sizing: border-box; }
+      #left { flex: 0 0 46%; min-width: 0; display: flex; flex-direction: column; }
+      #toprow { display: flex; gap: 26px; flex: none; }
+      #projects { flex: 1; min-height: 0; overflow-y: auto; margin-top: 16px; }
+      .prow { padding: 3px 0 5px; }
+      .prow-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+      .prow .pn { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .prow .pm { color: var(--vscode-descriptionForeground); font-size: 11px; flex: none; }
+      .pbar { height: 3px; border-radius: 2px; margin-top: 3px;
+              background: color-mix(in srgb, var(--vscode-descriptionForeground) 15%, transparent); }
+      .pbar > div { height: 100%; background: var(--vscode-charts-orange); opacity: 0.7; border-radius: 2px; }
       h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;
            color: var(--vscode-descriptionForeground); font-weight: 600; }
       .stats { flex: none; display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
@@ -472,14 +505,19 @@ class DashboardProvider {
       .empty { color: var(--vscode-descriptionForeground); padding: 16px 4px; }
     </style></head><body>
     ${all.length ? `<div id="wrap">
-      <div class="stats">
-        <h3>Claude Code</h3>
-        <div class="stat"><b>${today.n}</b><span>today · ${fmtMB(today.bytes)}</span></div>
-        <div class="stat"><b>${week}</b><span>this week</span></div>
-        <div class="stat"><b>${all.length}</b><span>total sessions</span></div>
+      <div id="left">
+        <div id="toprow">
+          <div class="stats">
+            <h3>Claude Code</h3>
+            <div class="stat"><b>${today.n}</b><span>today · ${fmtMB(today.bytes)}</span></div>
+            <div class="stat"><b>${week}</b><span>this week</span></div>
+            <div class="stat"><b>${all.length}</b><span>total sessions</span></div>
+          </div>
+          <div class="stats" id="usage"><h3>Usage</h3><div class="foot">computing…</div></div>
+          <div><h3>14 days</h3><div id="chart">${bars}</div></div>
+        </div>
+        <div id="projects"><h3>Projects</h3><div class="foot">computing…</div></div>
       </div>
-      <div class="stats" id="usage"><h3>Usage</h3><div class="foot">computing…</div></div>
-      <div><h3>14 days</h3><div id="chart">${bars}</div></div>
       <div id="sessions">
         <div id="shead"><h3>Sessions</h3>
           <input id="q" type="text" placeholder="Search all sessions…" aria-label="Search sessions">
@@ -494,6 +532,8 @@ class DashboardProvider {
         if (e.data && e.data.cmd === 'usage') {
           const el = document.getElementById('usage');
           if (el) el.innerHTML = e.data.html;
+          const pr = document.getElementById('projects');
+          if (pr && e.data.projects) pr.innerHTML = e.data.projects;
         }
       });
       const escH = (s) => String(s).replace(/[&<>"']/g, (c) =>
@@ -545,8 +585,16 @@ class DashboardProvider {
     </script></body></html>`;
 
     if (all.length) {
-      this.computeUsage(all).then((agg) => {
-        if (this.view) this.view.webview.postMessage({ cmd: 'usage', html: this.usageHtml(agg) });
+      const fileProj = new Map(all.map(({ p, s }) =>
+        [path.join(scan.getRoot(), p.slug, s.file), p.name.split('/').pop()]));
+      this.computeUsage(all, fileProj).then((agg) => {
+        if (this.view) {
+          this.view.webview.postMessage({
+            cmd: 'usage',
+            html: this.usageHtml(agg),
+            projects: this.projectsHtml(agg),
+          });
+        }
       }).catch(() => { /* usage stays at placeholder */ });
     }
   }
