@@ -89,6 +89,26 @@ npx @vscode/vsce publish                # or: vsce publish patch|minor|major
 
 Alternatively skip the CLI: `npx @vscode/vsce package` and upload the `.vsix` on the manage page. To reach Cursor/VSCodium users too, also publish to Open VSX: `npx ovsx publish` (token from open-vsx.org).
 
+## Other editors (Zed, JetBrains, anything)
+
+The viewer doesn't need VS Code — `npx claude-lens-viewer` opens the same UI in
+your browser. In **Zed**, make it a one-keystroke command by adding a task
+(`zed: open tasks` from the command palette):
+
+```json
+[
+  {
+    "label": "Session Lens",
+    "command": "npx claude-lens-viewer",
+    "use_new_terminal": false,
+    "reveal": "no_focus"
+  }
+]
+```
+
+Then `task: spawn` → **Session Lens** launches it. The Resume button copies the
+`claude --resume` command to paste into your terminal.
+
 ## Privacy & security
 
 Your transcripts often contain source code, credentials you pasted, and internal
