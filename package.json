@@ -48,12 +48,24 @@
         "command": "claudeLens.resumeSession",
         "title": "Resume in Terminal",
         "icon": "$(terminal)"
+      },
+      {
+        "command": "claudeLens.copyResumeCommand",
+        "title": "Copy Resume Command",
+        "icon": "$(copy)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "claude-lens",
+          "title": "Claude Lens",
+          "icon": "media/lens.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "claude-lens-panel",
           "title": "Claude Lens",
           "icon": "media/lens.svg"
         }
@@ -64,6 +76,14 @@
         {
           "id": "claudeLens.sessions",
           "name": "Sessions",
+          "icon": "media/lens.svg"
+        }
+      ],
+      "claude-lens-panel": [
+        {
+          "id": "claudeLens.dashboard",
+          "type": "webview",
+          "name": "Overview",
           "icon": "media/lens.svg"
         }
       ]
@@ -94,14 +114,24 @@
       ],
       "view/item/context": [
         {
-          "command": "claudeLens.resumeSession",
+          "command": "claudeLens.copyResumeCommand",
           "when": "view == claudeLens.sessions && viewItem == session",
-          "group": "inline"
+          "group": "inline@1"
         },
         {
           "command": "claudeLens.resumeSession",
           "when": "view == claudeLens.sessions && viewItem == session",
-          "group": "navigation"
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeLens.copyResumeCommand",
+          "when": "view == claudeLens.sessions && viewItem == session",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeLens.resumeSession",
+          "when": "view == claudeLens.sessions && viewItem == session",
+          "group": "navigation@1"
         }
       ],
       "commandPalette": [
@@ -111,6 +141,10 @@
         },
         {
           "command": "claudeLens.resumeSession",
+          "when": "false"
+        },
+        {
+          "command": "claudeLens.copyResumeCommand",
           "when": "false"
         }
       ]

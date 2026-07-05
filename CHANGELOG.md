@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.6
+
+- Panel-area dashboard (next to Terminal/Ports): today/this-week/total
+  session stats, a 14-day activity chart, and recent sessions with
+  open / copy-resume-command / resume-in-terminal actions.
+- "Copy Resume Command" on every session in the tree (inline icon and
+  right-click), copying `cd <project> && claude --resume <id>`.
+
 ## 0.4.5
 
 - Custom sessions locations: `CLAUDE_CONFIG_DIR` is honored automatically,

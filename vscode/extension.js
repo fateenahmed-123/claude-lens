@@ -39,7 +39,30 @@ function activate(context) {
     vscode.commands.registerCommand('claudeLens.openSession',
       (project, file) => openPanel(context, { project, file })),
     vscode.commands.registerCommand('claudeLens.resumeSession', resumeFromTree),
+    vscode.commands.registerCommand('claudeLens.copyResumeCommand', copyResumeFromTree),
+    vscode.window.registerWebviewViewProvider('claudeLens.dashboard', new DashboardProvider(context)),
   );
+}
+
+/** `cd <cwd> && claude --resume <id>`, or null if the id is unusable. */
+function resumeCommandString(sessionId, cwd) {
+  if (!/^[A-Za-z0-9-]{4,64}$/.test(String(sessionId || ''))) return null;
+  const cd = cwd ? `cd '${String(cwd).replace(/'/g, "'\\''")}' && ` : '';
+  return cd + 'claude --resume ' + sessionId;
+}
+
+async function sessionCwd(projectSlug, file) {
+  try {
+    return (await scan.sessionMeta(path.join(scan.getRoot(), projectSlug, file))).cwd;
+  } catch { return null; }
+}
+
+async function copyResumeFromTree(el) {
+  if (!el || el.kind !== 'sess') return;
+  const cmd = resumeCommandString(el.s.id, await sessionCwd(el.p.slug, el.s.file));
+  if (!cmd) return void vscode.window.showWarningMessage('claude-lens: unusable session id');
+  await vscode.env.clipboard.writeText(cmd);
+  vscode.window.setStatusBarMessage('claude-lens: resume command copied', 3000);
 }
 
 /** Open a terminal in the session's cwd and run `claude --resume`. */
@@ -59,11 +82,7 @@ function resumeInTerminal(sessionId, cwd) {
 
 async function resumeFromTree(el) {
   if (!el || el.kind !== 'sess') return;
-  let cwd = null;
-  try {
-    cwd = (await scan.sessionMeta(path.join(scan.getRoot(), el.p.slug, el.s.file))).cwd;
-  } catch { /* resume without cwd */ }
-  resumeInTerminal(el.s.id, cwd);
+  resumeInTerminal(el.s.id, await sessionCwd(el.p.slug, el.s.file));
 }
 
 /* ------------------------------------------------------- session tree */
@@ -230,6 +249,140 @@ function openPanel(context, sel) {
       reply(false, null, String(err && err.message || err));
     }
   }, null, context.subscriptions);
+}
+
+/* --------------------------------------------- panel-area dashboard */
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+class DashboardProvider {
+  constructor(context) { this.context = context; }
+
+  resolveWebviewView(view) {
+    this.view = view;
+    view.webview.options = { enableScripts: true };
+    view.onDidChangeVisibility(() => { if (view.visible) this.render(); });
+    view.webview.onDidReceiveMessage(async (msg) => {
+      if (msg.cmd === 'open') {
+        vscode.commands.executeCommand('claudeLens.openSession', msg.project, msg.file);
+      } else if (msg.cmd === 'resume') {
+        resumeInTerminal(msg.sessionId, msg.cwd || (await sessionCwd(msg.project, msg.file)));
+      } else if (msg.cmd === 'copy') {
+        const cmd = resumeCommandString(msg.sessionId, msg.cwd || (await sessionCwd(msg.project, msg.file)));
+        if (cmd) {
+          await vscode.env.clipboard.writeText(cmd);
+          vscode.window.setStatusBarMessage('claude-lens: resume command copied', 3000);
+        }
+      } else if (msg.cmd === 'refresh') {
+        this.render();
+      }
+    }, null, this.context.subscriptions);
+    this.render();
+  }
+
+  async render() {
+    if (!this.view) return;
+    let projects = [];
+    try { projects = await scan.listProjects(); } catch { /* empty state below */ }
+
+    const all = [];
+    for (const p of projects) for (const s of p.sessions) all.push({ p, s });
+    all.sort((a, b) => b.s.mtime - a.s.mtime);
+
+    // 14-day activity: sessions touched + bytes written per day
+    const days = Array.from({ length: 14 }, () => ({ n: 0, bytes: 0 }));
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    for (const { s } of all) {
+      const d = Math.floor((midnight.getTime() + 86400e3 - s.mtime) / 86400e3);
+      if (d >= 0 && d < 14) { days[13 - d].n++; days[13 - d].bytes += s.size; }
+    }
+    const today = days[13], week = days.slice(7).reduce((a, d) => a + d.n, 0);
+    const max = Math.max(1, ...days.map(d => d.n));
+    const fmtMB = (b) => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.round(b / 1024) + ' KB';
+
+    const recent = all.slice(0, 8);
+    const metas = await Promise.all(recent.map(({ p, s }) =>
+      scan.sessionMeta(path.join(scan.getRoot(), p.slug, s.file)).catch(() => ({}))));
+
+    const rel = (t) => {
+      const d = Date.now() - t;
+      if (d < 3600e3) return Math.max(1, Math.round(d / 60e3)) + 'm';
+      if (d < 86400e3) return Math.round(d / 3600e3) + 'h';
+      return Math.round(d / 86400e3) + 'd';
+    };
+
+    const bars = days.map((d, i) => {
+      const h = d.n ? Math.max(8, Math.round(d.n / max * 100)) : 4;
+      const label = new Date(midnight.getTime() - (13 - i) * 86400e3)
+        .toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      return `<div class="bar${d.n ? '' : ' zero'}${i === 13 ? ' today' : ''}" style="height:${h}%"
+        title="${esc(label)}: ${d.n} session${d.n === 1 ? '' : 's'} · ${fmtMB(d.bytes)}"></div>`;
+    }).join('');
+
+    const rows = recent.map(({ p, s }, i) => {
+      const m = metas[i] || {};
+      const title = m.title || m.firstPrompt || s.id.slice(0, 8) + '…';
+      const proj = p.name.split('/').pop();
+      const data = `data-project="${esc(p.slug)}" data-file="${esc(s.file)}" data-sid="${esc(s.id)}" data-cwd="${esc(m.cwd || '')}"`;
+      return `<div class="row" ${data}>
+        <span class="t" title="${esc(title)}">${esc(title)}</span>
+        <span class="m">${esc(proj)} · ${rel(s.mtime)}</span>
+        <span class="acts">
+          <button data-act="copy" title="Copy resume command">⧉</button>
+          <button data-act="resume" title="Resume in terminal">▶</button>
+        </span>
+      </div>`;
+    }).join('');
+
+    this.view.webview.html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      body { font: 12px var(--vscode-font-family); color: var(--vscode-foreground);
+             margin: 0; padding: 10px 14px; user-select: none; }
+      #wrap { display: flex; gap: 26px; align-items: stretch; max-width: 900px; }
+      h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;
+           color: var(--vscode-descriptionForeground); font-weight: 600; }
+      .stats { flex: none; display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+      .stat b { font-size: 18px; font-weight: 600; }
+      .stat span { color: var(--vscode-descriptionForeground); margin-left: 5px; }
+      #chart { flex: none; width: 190px; display: flex; align-items: flex-end; gap: 4px; height: 74px; }
+      .bar { flex: 1; background: var(--vscode-charts-orange); opacity: 0.45; border-radius: 2px 2px 0 0; min-height: 3px; }
+      .bar.today { opacity: 1; }
+      .bar.zero { background: var(--vscode-descriptionForeground); opacity: 0.18; }
+      #recent { flex: 1; min-width: 0; }
+      .row { display: flex; align-items: center; gap: 8px; padding: 2.5px 6px; border-radius: 4px; cursor: pointer; }
+      .row:hover { background: var(--vscode-list-hoverBackground); }
+      .row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+      .row .m { color: var(--vscode-descriptionForeground); flex: none; font-size: 11px; }
+      .acts { flex: none; visibility: hidden; }
+      .row:hover .acts { visibility: visible; }
+      .acts button { background: none; border: none; color: var(--vscode-foreground);
+                     cursor: pointer; font-size: 12px; padding: 0 4px; opacity: 0.75; }
+      .acts button:hover { opacity: 1; }
+      .empty { color: var(--vscode-descriptionForeground); padding: 16px 4px; }
+    </style></head><body>
+    ${all.length ? `<div id="wrap">
+      <div class="stats">
+        <h3>Claude Code</h3>
+        <div class="stat"><b>${today.n}</b><span>today · ${fmtMB(today.bytes)}</span></div>
+        <div class="stat"><b>${week}</b><span>this week</span></div>
+        <div class="stat"><b>${all.length}</b><span>total sessions</span></div>
+      </div>
+      <div><h3>14 days</h3><div id="chart">${bars}</div></div>
+      <div id="recent"><h3>Recent</h3>${rows}</div>
+    </div>` : '<div class="empty">No Claude Code sessions found. They appear here once you use the Claude Code CLI.</div>'}
+    <script>
+      const vs = acquireVsCodeApi();
+      document.addEventListener('click', (e) => {
+        const row = e.target.closest('.row');
+        if (!row) return;
+        const d = row.dataset;
+        const act = e.target.closest('button')?.dataset.act;
+        if (act === 'copy') vs.postMessage({ cmd: 'copy', sessionId: d.sid, cwd: d.cwd, project: d.project, file: d.file });
+        else if (act === 'resume') vs.postMessage({ cmd: 'resume', sessionId: d.sid, cwd: d.cwd, project: d.project, file: d.file });
+        else vs.postMessage({ cmd: 'open', project: d.project, file: d.file });
+      });
+    </script></body></html>`;
+  }
 }
 
 function deactivate() {}
