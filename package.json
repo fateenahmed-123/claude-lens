@@ -1,7 +1,7 @@
 {
   "name": "claude-lens-viewer",
   "displayName": "Session Lens for Claude Code",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "A rich, minimal viewer for Claude Code CLI session transcripts: prompts, thinking, tool calls, diffs, token stats, resume & context export",
   "publisher": "fahmed",
   "icon": "icon.png",
