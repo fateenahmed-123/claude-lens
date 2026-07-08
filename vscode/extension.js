@@ -18,6 +18,52 @@ let panel = null;
 let panelReady = false;
 let pendingOpen = null;
 
+const RECENT_KEY = 'lens.recentOpened.v1';
+const RECENT_MAX = 25;
+
+/** Record a session as recently viewed (most-recent first, deduped by path). */
+async function recordRecent(context, project, file) {
+  let title = null, cwd = null;
+  try {
+    const m = await scan.sessionMeta(path.join(scan.getRoot(), project, file));
+    title = m.title || m.firstPrompt || null;
+    cwd = m.cwd || null;
+  } catch { /* keep nulls */ }
+  const list = (context.globalState.get(RECENT_KEY, []) || [])
+    .filter((r) => !(r.project === project && r.file === file));
+  list.unshift({ project, file, title, cwd, ts: Date.now() });
+  await context.globalState.update(RECENT_KEY, list.slice(0, RECENT_MAX));
+}
+
+/** Recently-viewed entries whose files still exist, most-recent first. */
+function getRecent(context) {
+  return (context.globalState.get(RECENT_KEY, []) || [])
+    .filter((r) => r && r.project && r.file && scan.resolveSession(r.project, r.file)
+      && fs.existsSync(path.join(scan.getRoot(), r.project, r.file)));
+}
+
+/** QuickPick of recently viewed sessions → reopen the chosen one. */
+async function reopenRecent(context) {
+  const recent = getRecent(context);
+  if (!recent.length) {
+    vscode.window.showInformationMessage('claude-lens: no recently viewed sessions yet.');
+    return;
+  }
+  const items = recent.map((r) => ({
+    label: '$(comment-discussion) ' + (r.title || r.file.replace(/\.jsonl$/, '').slice(0, 8) + '…'),
+    description: r.project.replace(/^-/, '').split('-').pop() + ' · ' + relTime(r.ts),
+    detail: r.cwd || undefined,
+    r,
+  }));
+  const pick = await vscode.window.showQuickPick(items, {
+    title: 'Reopen a recently viewed session',
+    placeHolder: 'Sessions you opened recently, newest first',
+    matchOnDescription: true,
+    matchOnDetail: true,
+  });
+  if (pick) openPanel(context, { project: pick.r.project, file: pick.r.file });
+}
+
 function applyProjectsDirSetting() {
   // Empty setting → scan.js default (~/.claude/projects or $CLAUDE_CONFIG_DIR/projects)
   scan.setRoot(vscode.workspace.getConfiguration('claudeLens').get('projectsDir') || null);
@@ -34,8 +80,13 @@ function activate(context) {
       }
     }),
     vscode.window.registerTreeDataProvider('claudeLens.sessions', tree),
-    vscode.commands.registerCommand('claudeLens.open', () => openPanel(context)),
+    vscode.commands.registerCommand('claudeLens.open', () => {
+      // Restore the most recently viewed session rather than opening empty.
+      const last = panel ? null : getRecent(context)[0];
+      openPanel(context, last ? { project: last.project, file: last.file } : undefined);
+    }),
     vscode.commands.registerCommand('claudeLens.refresh', () => tree.refresh()),
+    vscode.commands.registerCommand('claudeLens.reopenRecent', () => reopenRecent(context)),
     vscode.commands.registerCommand('claudeLens.openSession',
       (project, file) => openPanel(context, { project, file })),
     vscode.commands.registerCommand('claudeLens.resumeSession', resumeFromTree),
@@ -189,6 +240,7 @@ class SessionTreeProvider {
 /* ------------------------------------------------------ viewer panel */
 
 function openPanel(context, sel) {
+  if (sel) recordRecent(context, sel.project, sel.file);
   if (panel) {
     panel.reveal(vscode.ViewColumn.One);
     if (sel) {
@@ -461,11 +513,13 @@ class DashboardProvider {
     this.view.webview.html = `<!doctype html><html><head><meta charset="utf-8"><style>
       html, body { height: 100%; }
       body { font: 12px var(--vscode-font-family); color: var(--vscode-foreground);
-             margin: 0; padding: 10px 14px; user-select: none; box-sizing: border-box; }
-      #wrap { display: flex; gap: 26px; align-items: stretch; height: 100%; box-sizing: border-box; }
-      #left { flex: 0 0 46%; min-width: 0; display: flex; flex-direction: column; }
-      #toprow { display: flex; gap: 26px; flex: none; }
-      #projects { flex: 1; min-height: 0; overflow-y: auto; margin-top: 16px; }
+             margin: 0; padding: 10px 14px; user-select: none; box-sizing: border-box; overflow: hidden; }
+      #wrap { display: flex; flex-wrap: wrap; gap: 22px 26px; align-items: stretch;
+              height: 100%; box-sizing: border-box; }
+      #left { flex: 1 1 330px; min-width: 230px; display: flex; flex-direction: column; min-height: 0; }
+      #toprow { display: flex; flex-wrap: wrap; gap: 16px 24px; flex: none; }
+      #toprow > * { min-width: 0; }
+      #projects { flex: 1 1 auto; min-height: 60px; overflow-y: auto; margin-top: 16px; }
       .prow { padding: 3px 0 5px; }
       .prow-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
       .prow .pn { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -475,15 +529,16 @@ class DashboardProvider {
       .pbar > div { height: 100%; background: var(--vscode-charts-orange); opacity: 0.7; border-radius: 2px; }
       h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;
            color: var(--vscode-descriptionForeground); font-weight: 600; }
-      .stats { flex: none; display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+      .stats { flex: 1 1 120px; display: flex; flex-direction: column; gap: 4px; min-width: 118px; }
       .stat b { font-size: 18px; font-weight: 600; }
       .stat span { color: var(--vscode-descriptionForeground); margin-left: 5px; }
       .foot { color: var(--vscode-descriptionForeground); font-size: 10.5px; margin-top: 3px; }
-      #chart { flex: none; width: 190px; display: flex; align-items: flex-end; gap: 4px; height: 74px; }
+      .chartwrap { flex: 1 1 150px; min-width: 110px; max-width: 240px; }
+      #chart { display: flex; align-items: flex-end; gap: 4px; height: 74px; overflow: hidden; }
       .bar { flex: 1; background: var(--vscode-charts-orange); opacity: 0.45; border-radius: 2px 2px 0 0; min-height: 3px; }
       .bar.today { opacity: 1; }
       .bar.zero { background: var(--vscode-descriptionForeground); opacity: 0.18; }
-      #sessions { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      #sessions { flex: 2 1 300px; min-width: 240px; display: flex; flex-direction: column; min-height: 0; }
       #shead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
       #shead h3 { margin: 0; flex: none; }
       #q { flex: 1; max-width: 340px; font: 12px var(--vscode-font-family);
@@ -503,6 +558,16 @@ class DashboardProvider {
                      cursor: pointer; font-size: 12px; padding: 0 4px; opacity: 0.75; }
       .acts button:hover { opacity: 1; }
       .empty { color: var(--vscode-descriptionForeground); padding: 16px 4px; }
+      /* Narrow panel (e.g. Chat docked beside it): stack, let the page scroll. */
+      @media (max-width: 720px) {
+        html, body { height: auto; }
+        body { overflow-y: auto; }
+        #wrap { height: auto; flex-wrap: nowrap; flex-direction: column; gap: 18px; }
+        #left, #sessions { flex: none; width: 100%; }
+        #projects { flex: none; overflow: visible; }
+        #list { flex: none; overflow: visible; }
+        #q { max-width: none; }
+      }
     </style></head><body>
     ${all.length ? `<div id="wrap">
       <div id="left">
@@ -514,7 +579,7 @@ class DashboardProvider {
             <div class="stat"><b>${all.length}</b><span>total sessions</span></div>
           </div>
           <div class="stats" id="usage"><h3>Usage</h3><div class="foot">computing…</div></div>
-          <div><h3>14 days</h3><div id="chart">${bars}</div></div>
+          <div class="chartwrap"><h3>14 days</h3><div id="chart">${bars}</div></div>
         </div>
         <div id="projects"><h3>Projects</h3><div class="foot">computing…</div></div>
       </div>

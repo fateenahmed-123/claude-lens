@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.14
+
+- Responsive dashboard: the panel now reflows to its width. Fixes the 14-day
+  chart overflowing into the sessions list when the panel is narrow (e.g. with
+  Chat docked beside it); stacks to a single scrolling column when very narrow.
+- Reopen recently viewed sessions: a history button on the Sessions view (and
+  the "Claude Lens: Reopen Recent Session" command) shows a quick-pick of
+  sessions you opened recently. "Open Session Viewer" now restores your
+  last-viewed session instead of opening empty.
+
 ## 0.4.13
 
 - Per-project breakdown fills the dashboard's lower-left: sessions, tokens,

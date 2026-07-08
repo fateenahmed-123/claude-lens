@@ -1,7 +1,7 @@
 {
   "name": "claude-lens-viewer",
   "displayName": "Session Lens for Claude Code",
-  "version": "0.4.13",
+  "version": "0.4.14",
   "description": "A rich, minimal viewer for Claude Code CLI session transcripts: prompts, thinking, tool calls, diffs, token stats, resume & context export",
   "publisher": "fahmed",
   "icon": "icon.png",
@@ -39,6 +39,11 @@
         "command": "claudeLens.refresh",
         "title": "Refresh Sessions",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeLens.reopenRecent",
+        "title": "Claude Lens: Reopen Recent Session",
+        "icon": "$(history)"
       },
       {
         "command": "claudeLens.openSession",
@@ -107,9 +112,14 @@
     "menus": {
       "view/title": [
         {
+          "command": "claudeLens.reopenRecent",
+          "when": "view == claudeLens.sessions",
+          "group": "navigation@1"
+        },
+        {
           "command": "claudeLens.refresh",
           "when": "view == claudeLens.sessions",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
