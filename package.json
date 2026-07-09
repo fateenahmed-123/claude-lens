@@ -1,7 +1,7 @@
 {
   "name": "claude-lens-viewer",
   "displayName": "Session Lens for Claude Code",
-  "version": "0.4.14",
+  "version": "0.4.15",
   "description": "A rich, minimal viewer for Claude Code CLI session transcripts: prompts, thinking, tool calls, diffs, token stats, resume & context export",
   "publisher": "fahmed",
   "icon": "icon.png",
@@ -14,7 +14,9 @@
     "theme": "dark"
   },
   "bin": {
-    "claude-lens": "bin/claude-lens.js"
+    "claude-lens": "bin/claude-lens.js",
+    "claude-lens-viewer": "bin/claude-lens.js",
+    "session-lens": "bin/claude-lens.js"
   },
   "main": "./vscode/extension.js",
   "scripts": {
@@ -96,17 +98,25 @@
     "configuration": {
       "title": "Claude Lens",
       "properties": {
+        "claudeLens.projectsDirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "One or more folders to read sessions from, merged into a single view. Use this when your sessions live outside `~/.claude/projects` — backups, a synced machine, or a custom `CLAUDE_CONFIG_DIR`. Each entry may be a Claude Code projects tree or any folder containing `.jsonl` transcripts (`~` is expanded). Include `~/.claude/projects` in the list if you also want the default. Leave empty for the default location."
+        },
         "claudeLens.projectsDir": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Folder to read sessions from. Leave empty for the default: `~/.claude/projects`, or `$CLAUDE_CONFIG_DIR/projects` when that environment variable is set. Accepts a Claude Code projects tree or any folder containing `.jsonl` transcripts."
+          "markdownDescription": "Single folder to read sessions from (kept for compatibility — prefer `claudeLens.projectsDirs` for one or more). Leave empty for the default: `~/.claude/projects`, or `$CLAUDE_CONFIG_DIR/projects` when that environment variable is set."
         }
       }
     },
     "viewsWelcome": [
       {
         "view": "claudeLens.sessions",
-        "contents": "No Claude Code sessions found on this machine.\nSessions appear here after you use the [Claude Code CLI](https://claude.com/claude-code); they are read locally from ~/.claude/projects.\n[Refresh](command:claudeLens.refresh)"
+        "contents": "No Claude Code sessions found on this machine.\nSessions appear here after you use the [Claude Code CLI](https://claude.com/claude-code). By default they are read locally from ~/.claude/projects; configure `claudeLens.projectsDirs` if yours live elsewhere.\n[Refresh](command:claudeLens.refresh)"
       }
     ],
     "menus": {

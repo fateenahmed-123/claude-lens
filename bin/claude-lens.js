@@ -27,23 +27,26 @@ const args = process.argv.slice(2);
 let port = 7777;
 let singleFile = null;
 let noOpen = false;
+const dirs = [];
 
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === '--port' || a === '-p') port = Number(args[++i]) || port;
-  else if (a === '--dir' || a === '-d') scan.setRoot(args[++i]);
+  else if (a === '--dir' || a === '-d') dirs.push(args[++i]);
   else if (a === '--no-open') noOpen = true;
   else if (a === '--help' || a === '-h') {
-    console.log(`claude-lens [file.jsonl] [--dir path] [--port N] [--no-open]
+    console.log(`claude-lens [file.jsonl] [--dir path]... [--port N] [--no-open]
 
 Visualize Claude Code CLI sessions. Reads ~/.claude/projects/ by default,
 or $CLAUDE_CONFIG_DIR/projects when that variable is set.
   --dir path   read sessions from a different folder (a projects tree
-               or any folder containing .jsonl transcripts)
+               or any folder containing .jsonl transcripts). Repeatable —
+               pass --dir more than once to merge several locations.
 Pass a .jsonl path to open a single transcript directly.`);
     process.exit(0);
   } else if (a.endsWith('.jsonl')) singleFile = path.resolve(a);
 }
+if (dirs.length) scan.setRoots(dirs);
 
 // ------------------------------------------------------------- server
 

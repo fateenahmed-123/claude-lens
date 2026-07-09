@@ -1152,7 +1152,7 @@ $('#btn-resume').addEventListener('click', async () => {
   const c = state.current || {};
   if (!c.sessionId || !SESSION_ID_RE.test(c.sessionId)) return showToast('No usable session id in this transcript');
   if (vscodeApi) {
-    try { await rpc('resume', { sessionId: c.sessionId, cwd: c.cwd }); showToast('Resuming in a new terminal'); }
+    try { await rpc('resume', { sessionId: c.sessionId, cwd: c.cwd, title: c.title }); showToast('Resuming in a new terminal'); }
     catch (err) { showToast('Resume failed: ' + err.message); }
     return;
   }

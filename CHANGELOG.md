@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.15
+
+- Resume terminals are now named after the session title (falling back to a
+  short session id), so several restored sessions are easier to tell apart.
+- Session roots can now be merged from multiple locations. Pass `--dir` more
+  than once in the CLI, or set `claudeLens.projectsDirs` in VS Code. This
+  covers backups, synced machines, custom `CLAUDE_CONFIG_DIR` layouts, and
+  flat folders of copied `.jsonl` transcripts.
+- Added safe CLI aliases: `claude-lens-viewer`, `claude-lens`, and
+  `session-lens` all launch the same browser viewer.
+
 ## 0.4.14
 
 - Responsive dashboard: the panel now reflows to its width. Fixes the 14-day

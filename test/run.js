@@ -101,24 +101,25 @@ assert(scan.resolveSession('proj', 'x.txt') === null, 'extension check');
 assert(scan.resolveSession('proj', 'x.jsonl') !== null, 'valid path accepted');
 ok('path traversal rejected');
 
-section('usage stats');
 const os = require('os');
-const utmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-usage-'));
-fs.writeFileSync(path.join(utmp, 'u.jsonl'), fixture);
-scan.usageStats(path.join(utmp, 'u.jsonl')).then((u) => {
+
+async function scanTests() {
+  section('usage stats');
+  const utmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-usage-'));
+  fs.writeFileSync(path.join(utmp, 'u.jsonl'), fixture);
+  const u = await scan.usageStats(path.join(utmp, 'u.jsonl'));
   assert(u.models['claude-test-1'], 'model aggregated');
   assert(u.models['claude-test-1'].in === 10 && u.models['claude-test-1'].out === 20, 'requestId dedup + sums');
   assert(u.byDay['2026-07-01'] && u.byDay['2026-07-01'].out === 20, 'per-day bucket');
   fs.rmSync(utmp, { recursive: true, force: true });
   ok('usage scan dedupes by requestId and buckets by day');
-}).catch((err) => { console.error('FAILED:', err.message); process.exit(1); });
 
-section('custom sessions root');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-test-'));
-fs.writeFileSync(path.join(tmp, 'loose-session.jsonl'), fixture);
-scan.setRoot(tmp);
-assert(scan.getRoot() === tmp, 'setRoot applies');
-scan.listProjects().then((projects) => {
+  section('custom sessions root');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-test-'));
+  fs.writeFileSync(path.join(tmp, 'loose-session.jsonl'), fixture);
+  scan.setRoot(tmp);
+  assert(scan.getRoot() === tmp, 'setRoot applies');
+  const projects = await scan.listProjects();
   assert(projects.length === 1 && projects[0].slug === '.', 'loose folder becomes a pseudo-project');
   assert(projects[0].sessions[0].file === 'loose-session.jsonl', 'loose session listed');
   assert(scan.resolveSession('.', 'loose-session.jsonl') !== null, 'loose session resolvable');
@@ -127,7 +128,28 @@ scan.listProjects().then((projects) => {
   assert(scan.getRoot() !== tmp, 'setRoot(null) restores default');
   fs.rmSync(tmp, { recursive: true, force: true });
   ok('custom --dir root with loose .jsonl files');
-}).catch((err) => { console.error('FAILED:', err.message); process.exit(1); });
+
+  section('multiple sessions roots');
+  const tmpA = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-root-a-'));
+  const tmpB = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-root-b-'));
+  const projA = path.join(tmpA, '-tmp-project-a');
+  const projB = path.join(tmpB, '-tmp-project-b');
+  fs.mkdirSync(projA);
+  fs.mkdirSync(projB);
+  fs.writeFileSync(path.join(projA, 'a.jsonl'), fixture);
+  fs.writeFileSync(path.join(projB, 'b.jsonl'), fixture);
+  scan.setRoots([tmpA, tmpB]);
+  assert(scan.getRoots().length === 2, 'setRoots applies both roots');
+  const multiProjects = await scan.listProjects();
+  const slugs = multiProjects.map((p) => p.slug).sort();
+  assert(slugs.includes('-tmp-project-a') && slugs.includes('-tmp-project-b'), 'both roots listed');
+  assert(scan.resolveSession('-tmp-project-a', 'a.jsonl') === path.join(projA, 'a.jsonl'), 'first root resolves');
+  assert(scan.resolveSession('-tmp-project-b', 'b.jsonl') === path.join(projB, 'b.jsonl'), 'second root resolves');
+  scan.setRoot(null);
+  fs.rmSync(tmpA, { recursive: true, force: true });
+  fs.rmSync(tmpB, { recursive: true, force: true });
+  ok('multiple roots are merged and resolvable');
+}
 
 /* ------------------------------------------------------- server tests */
 
@@ -171,7 +193,7 @@ async function serverTests() {
   }
 }
 
-serverTests().then(() => {
+scanTests().then(serverTests).then(() => {
   console.log('\nall tests passed');
 }).catch((err) => {
   console.error('\nFAILED:', err.message);

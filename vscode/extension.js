@@ -25,7 +25,7 @@ const RECENT_MAX = 25;
 async function recordRecent(context, project, file) {
   let title = null, cwd = null;
   try {
-    const m = await scan.sessionMeta(path.join(scan.getRoot(), project, file));
+    const m = await scan.sessionMeta(scan.resolveSession(project, file));
     title = m.title || m.firstPrompt || null;
     cwd = m.cwd || null;
   } catch { /* keep nulls */ }
@@ -37,9 +37,11 @@ async function recordRecent(context, project, file) {
 
 /** Recently-viewed entries whose files still exist, most-recent first. */
 function getRecent(context) {
-  return (context.globalState.get(RECENT_KEY, []) || [])
-    .filter((r) => r && r.project && r.file && scan.resolveSession(r.project, r.file)
-      && fs.existsSync(path.join(scan.getRoot(), r.project, r.file)));
+  return (context.globalState.get(RECENT_KEY, []) || []).filter((r) => {
+    if (!r || !r.project || !r.file) return false;
+    const fp = scan.resolveSession(r.project, r.file);
+    return fp && fs.existsSync(fp);
+  });
 }
 
 /** QuickPick of recently viewed sessions → reopen the chosen one. */
@@ -65,8 +67,13 @@ async function reopenRecent(context) {
 }
 
 function applyProjectsDirSetting() {
-  // Empty setting → scan.js default (~/.claude/projects or $CLAUDE_CONFIG_DIR/projects)
-  scan.setRoot(vscode.workspace.getConfiguration('claudeLens').get('projectsDir') || null);
+  // Both settings feed the same multi-root scanner. `projectsDirs` (array) is
+  // the multi-location option; `projectsDir` (string) is kept for back-compat.
+  // Empty → scan.js default (~/.claude/projects or $CLAUDE_CONFIG_DIR/projects).
+  const cfg = vscode.workspace.getConfiguration('claudeLens');
+  const dirs = [].concat(cfg.get('projectsDirs') || [], cfg.get('projectsDir') || [])
+    .filter((d) => typeof d === 'string' && d.trim());
+  scan.setRoots(dirs.length ? dirs : null);
 }
 
 function activate(context) {
@@ -74,7 +81,8 @@ function activate(context) {
   const tree = new SessionTreeProvider();
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('claudeLens.projectsDir')) {
+      if (e.affectsConfiguration('claudeLens.projectsDir')
+        || e.affectsConfiguration('claudeLens.projectsDirs')) {
         applyProjectsDirSetting();
         tree.refresh();
       }
@@ -104,7 +112,7 @@ function resumeCommandString(sessionId, cwd) {
 
 async function sessionCwd(projectSlug, file) {
   try {
-    return (await scan.sessionMeta(path.join(scan.getRoot(), projectSlug, file))).cwd;
+    return (await scan.sessionMeta(scan.resolveSession(projectSlug, file))).cwd;
   } catch { return null; }
 }
 
@@ -116,8 +124,15 @@ async function copyResumeFromTree(el) {
   vscode.window.setStatusBarMessage('claude-lens: resume command copied', 3000);
 }
 
-/** Open a terminal in the session's cwd and run `claude --resume`. */
-function resumeInTerminal(sessionId, cwd) {
+/** Terminal tab label from a session title, falling back to a short id. */
+function terminalName(title, sessionId) {
+  const t = String(title || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (t) return t.length > 40 ? t.slice(0, 39) + '…' : t;
+  return 'claude ' + String(sessionId).slice(0, 8);
+}
+
+/** Open a terminal (named for the session) in its cwd and run `claude --resume`. */
+function resumeInTerminal(sessionId, cwd, title) {
   // The id and cwd come from transcript files; only a strict uuid-like
   // token may ever reach the terminal, and cwd must exist on disk.
   if (!/^[A-Za-z0-9-]{4,64}$/.test(sessionId)) {
@@ -125,7 +140,7 @@ function resumeInTerminal(sessionId, cwd) {
     return false;
   }
   const dir = cwd && fs.existsSync(cwd) ? cwd : undefined;
-  const term = vscode.window.createTerminal({ name: 'claude resume', cwd: dir });
+  const term = vscode.window.createTerminal({ name: terminalName(title, sessionId), cwd: dir });
   term.show();
   term.sendText(`claude --resume ${sessionId}`, true);
   return true;
@@ -133,7 +148,12 @@ function resumeInTerminal(sessionId, cwd) {
 
 async function resumeFromTree(el) {
   if (!el || el.kind !== 'sess') return;
-  resumeInTerminal(el.s.id, await sessionCwd(el.p.slug, el.s.file));
+  let title = null, cwd = null;
+  try {
+    const m = await scan.sessionMeta(scan.resolveSession(el.p.slug, el.s.file));
+    title = m.title || m.firstPrompt; cwd = m.cwd;
+  } catch { /* resume without cwd/name */ }
+  resumeInTerminal(el.s.id, cwd, title);
 }
 
 /* ------------------------------------------------------- session tree */
@@ -221,7 +241,7 @@ class SessionTreeProvider {
     }
     const { p, s } = el;
     let meta = {};
-    try { meta = await scan.sessionMeta(path.join(scan.getRoot(), p.slug, s.file)); } catch { /* uuid label */ }
+    try { meta = await scan.sessionMeta(scan.resolveSession(p.slug, s.file)); } catch { /* uuid label */ }
     const it = new vscode.TreeItem(meta.title || meta.firstPrompt || s.id.slice(0, 8) + '…');
     it.description = relTime(s.mtime);
     it.tooltip = [meta.title, meta.firstPrompt, new Date(s.mtime).toLocaleString()]
@@ -290,7 +310,7 @@ function openPanel(context, sel) {
         if (!f) return reply(false, null, 'bad path');
         reply(true, await fs.promises.readFile(f, 'utf8'));
       } else if (msg.cmd === 'resume') {
-        if (!resumeInTerminal(String(msg.args.sessionId || ''), msg.args.cwd)) {
+        if (!resumeInTerminal(String(msg.args.sessionId || ''), msg.args.cwd, msg.args.title)) {
           return reply(false, null, 'bad session id');
         }
         reply(true, true);
@@ -347,7 +367,7 @@ class DashboardProvider {
       if (msg.cmd === 'open') {
         vscode.commands.executeCommand('claudeLens.openSession', msg.project, msg.file);
       } else if (msg.cmd === 'resume') {
-        resumeInTerminal(msg.sessionId, msg.cwd || (await sessionCwd(msg.project, msg.file)));
+        resumeInTerminal(msg.sessionId, msg.cwd || (await sessionCwd(msg.project, msg.file)), msg.title);
       } else if (msg.cmd === 'copy') {
         const cmd = resumeCommandString(msg.sessionId, msg.cwd || (await sessionCwd(msg.project, msg.file)));
         if (cmd) {
@@ -375,7 +395,7 @@ class DashboardProvider {
         const idx = i++;
         if (idx >= all.length) return;
         const { p, s } = all[idx];
-        const fp = path.join(scan.getRoot(), p.slug, s.file);
+        const fp = scan.resolveSession(p.slug, s.file);
         const key = fp;
         const hit = cache[key];
         if (hit && hit.size === s.size && hit.mtime === s.mtime) continue;
@@ -397,7 +417,7 @@ class DashboardProvider {
       const proj = agg.projects[name] = agg.projects[name] || { tok: 0, usd: 0, sessions: 0 };
       proj.sessions++;
     }
-    const live = new Set(all.map(({ p, s }) => path.join(scan.getRoot(), p.slug, s.file)));
+    const live = new Set(all.map(({ p, s }) => scan.resolveSession(p.slug, s.file)));
     for (const [key, entry] of Object.entries(cache)) {
       if (!live.has(key)) continue;
       const { models, byDay } = entry.stats || {};
@@ -460,7 +480,7 @@ class DashboardProvider {
         const key = p.slug + '/' + s.file + ':' + s.mtime;
         if (!this.metaCache.has(key)) {
           this.metaCache.set(key,
-            await scan.sessionMeta(path.join(scan.getRoot(), p.slug, s.file)).catch(() => ({})));
+            await scan.sessionMeta(scan.resolveSession(p.slug, s.file)).catch(() => ({})));
         }
         out[idx] = this.metaCache.get(key);
       }
@@ -629,7 +649,7 @@ class DashboardProvider {
           const sub = q && !s.title.toLowerCase().includes(q) && s.prompt.toLowerCase().includes(q)
             ? '<div class="m" style="padding:0 6px 3px 6px">' + hi(s.prompt.slice(0, 120), q) + '</div>' : '';
           return '<div class="row" data-project="' + escH(s.project) + '" data-file="' + escH(s.file) +
-            '" data-sid="' + escH(s.sid) + '" data-cwd="' + escH(s.cwd) + '">' +
+            '" data-sid="' + escH(s.sid) + '" data-cwd="' + escH(s.cwd) + '" data-title="' + escH(s.title) + '">' +
             '<span class="t" title="' + escH(s.title) + '">' + hi(s.title, q) + '</span>' +
             '<span class="m">' + escH(s.projName) + ' · ' + rel(s.mtime) + '</span>' +
             '<span class="acts"><button data-act="copy" title="Copy resume command">⧉</button>' +
@@ -644,14 +664,14 @@ class DashboardProvider {
         const d = row.dataset;
         const act = e.target.closest('button')?.dataset.act;
         if (act === 'copy') vs.postMessage({ cmd: 'copy', sessionId: d.sid, cwd: d.cwd, project: d.project, file: d.file });
-        else if (act === 'resume') vs.postMessage({ cmd: 'resume', sessionId: d.sid, cwd: d.cwd, project: d.project, file: d.file });
+        else if (act === 'resume') vs.postMessage({ cmd: 'resume', sessionId: d.sid, cwd: d.cwd, project: d.project, file: d.file, title: d.title });
         else vs.postMessage({ cmd: 'open', project: d.project, file: d.file });
       });
     </script></body></html>`;
 
     if (all.length) {
       const fileProj = new Map(all.map(({ p, s }) =>
-        [path.join(scan.getRoot(), p.slug, s.file), p.name.split('/').pop()]));
+        [scan.resolveSession(p.slug, s.file), p.name.split('/').pop()]));
       this.computeUsage(all, fileProj).then((agg) => {
         if (this.view) {
           this.view.webview.postMessage({

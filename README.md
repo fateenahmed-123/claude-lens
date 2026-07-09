@@ -27,6 +27,9 @@ npx claude-lens-viewer demo/demo-session.jsonl
 npx claude-lens-viewer          # scans ~/.claude/projects, opens the viewer
 ```
 
+The package also exposes `claude-lens` and `session-lens` as command aliases,
+so use whichever reads better in your terminal.
+
 Or point it at one transcript:
 
 ```bash
@@ -41,9 +44,10 @@ The default root is `~/.claude/projects`. If `CLAUDE_CONFIG_DIR` is set (Claude 
 
 ```bash
 npx claude-lens-viewer --dir /path/to/folder
+npx claude-lens-viewer --dir ~/old-claude --dir /Volumes/backup/sessions
 ```
 
-`--dir` accepts either a real projects tree or any flat folder of `.jsonl` transcripts. In the VS Code extension, set **`claudeLens.projectsDir`** in Settings for the same effect. The sidebar footer always shows which folder is being read.
+`--dir` accepts either a real projects tree or any flat folder of `.jsonl` transcripts, and it can be passed more than once to merge several locations. In the VS Code extension, set **`claudeLens.projectsDirs`** for multiple folders, or **`claudeLens.projectsDir`** for the older single-folder setting. The sidebar footer always shows which folder(s) are being read.
 
 You can also just open the viewer and **drag any `.jsonl` transcript onto the page**; it parses in the browser, so it works even without the file being under `~/.claude/projects`.
 
@@ -70,7 +74,7 @@ Install it locally:
 
 ```bash
 npx @vscode/vsce package
-code --install-extension claude-lens-viewer-0.4.1.vsix
+code --install-extension claude-lens-viewer-<version>.vsix
 ```
 
 ### Publishing to the Marketplace
