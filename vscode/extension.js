@@ -11,7 +11,9 @@
 
 const vscode = require('vscode');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const cp = require('child_process');
 const scan = require('../lib/scan.js');
 
 let panel = null;
@@ -66,19 +68,52 @@ async function reopenRecent(context) {
   if (pick) openPanel(context, { project: pick.r.project, file: pick.r.file });
 }
 
+// A CLAUDE_CONFIG_DIR/projects location detected from the login shell (the GUI
+// process usually doesn't inherit shell env), merged in when nothing explicit
+// is configured. Null until detectConfigDirRoot() resolves.
+let autoConfigRoot = null;
+
 function applyProjectsDirSetting() {
-  // Both settings feed the same multi-root scanner. `projectsDirs` (array) is
-  // the multi-location option; `projectsDir` (string) is kept for back-compat.
-  // Empty → scan.js default (~/.claude/projects or $CLAUDE_CONFIG_DIR/projects).
+  // Explicit config always wins. `projectsDirs` (array) is the multi-location
+  // option; `projectsDir` (string) is kept for back-compat.
   const cfg = vscode.workspace.getConfiguration('claudeLens');
-  const dirs = [].concat(cfg.get('projectsDirs') || [], cfg.get('projectsDir') || [])
+  const configured = [].concat(cfg.get('projectsDirs') || [], cfg.get('projectsDir') || [])
     .filter((d) => typeof d === 'string' && d.trim());
-  scan.setRoots(dirs.length ? dirs : null);
+  if (configured.length) { scan.setRoots(configured); return; }
+  // Otherwise: the standard ~/.claude/projects, plus a relocated
+  // CLAUDE_CONFIG_DIR location if one was detected (both shown; sessions merge).
+  const roots = [path.join(os.homedir(), '.claude', 'projects')];
+  if (autoConfigRoot && !roots.includes(autoConfigRoot)) roots.push(autoConfigRoot);
+  scan.setRoots(roots);
+}
+
+/**
+ * Resolve $CLAUDE_CONFIG_DIR the way Claude Code sees it. Prefer the process
+ * env; if absent (typical for GUI-launched VS Code), read it from the user's
+ * login shell so the extension finds sessions the CLI would. Returns the
+ * `<dir>/projects` path or null.
+ */
+function detectConfigDirRoot() {
+  if (process.env.CLAUDE_CONFIG_DIR) {
+    return Promise.resolve(path.join(process.env.CLAUDE_CONFIG_DIR, 'projects'));
+  }
+  if (process.platform === 'win32') return Promise.resolve(null); // GUI inherits env
+  return new Promise((resolve) => {
+    const shell = process.env.SHELL || '/bin/bash';
+    cp.execFile(shell, ['-lic', 'printf %s "$CLAUDE_CONFIG_DIR"'], { timeout: 4000 }, (err, out) => {
+      const v = String(out || '').trim();
+      resolve(v ? path.join(v, 'projects') : null);
+    });
+  });
 }
 
 function activate(context) {
   applyProjectsDirSetting();
   const tree = new SessionTreeProvider();
+  // Detect a relocated CLAUDE_CONFIG_DIR (login-shell env) and merge it in.
+  detectConfigDirRoot().then((r) => {
+    if (r && r !== autoConfigRoot) { autoConfigRoot = r; applyProjectsDirSetting(); tree.refresh(); }
+  }).catch(() => { /* best-effort */ });
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudeLens.projectsDir')

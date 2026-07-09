@@ -8,6 +8,9 @@
   than once in the CLI, or set `claudeLens.projectsDirs` in VS Code. This
   covers backups, synced machines, custom `CLAUDE_CONFIG_DIR` layouts, and
   flat folders of copied `.jsonl` transcripts.
+- The VS Code extension now **auto-detects a relocated `CLAUDE_CONFIG_DIR`**
+  from your login shell (the GUI process doesn't inherit shell env), so
+  sessions stored outside `~/.claude` show up without manual configuration.
 - Added safe CLI aliases: `claude-lens-viewer`, `claude-lens`, and
   `session-lens` all launch the same browser viewer.
 
