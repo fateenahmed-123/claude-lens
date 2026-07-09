@@ -50,22 +50,34 @@ function getRecent(context) {
 async function reopenRecent(context) {
   const recent = getRecent(context);
   if (!recent.length) {
-    vscode.window.showInformationMessage('claude-lens: no recently viewed sessions yet.');
+    vscode.window.showInformationMessage('claude-lens: no recently opened sessions yet.');
     return;
   }
-  const items = recent.map((r) => ({
-    label: '$(comment-discussion) ' + (r.title || r.file.replace(/\.jsonl$/, '').slice(0, 8) + '…'),
+  const sid = (r) => r.file.replace(/\.jsonl$/, '');
+  const viewBtn = { iconPath: new vscode.ThemeIcon('book'), tooltip: 'Open transcript viewer' };
+  const qp = vscode.window.createQuickPick();
+  qp.title = 'Reopen a recent session';
+  qp.placeholder = 'Enter: resume in terminal  ·  click the book icon to view the transcript';
+  qp.matchOnDescription = true;
+  qp.matchOnDetail = true;
+  qp.items = recent.map((r) => ({
+    label: '$(terminal) ' + (r.title || sid(r).slice(0, 8) + '…'),
     description: r.project.replace(/^-/, '').split('-').pop() + ' · ' + relTime(r.ts),
     detail: r.cwd || undefined,
+    buttons: [viewBtn],
     r,
   }));
-  const pick = await vscode.window.showQuickPick(items, {
-    title: 'Reopen a recently viewed session',
-    placeHolder: 'Sessions you opened recently, newest first',
-    matchOnDescription: true,
-    matchOnDetail: true,
+  qp.onDidAccept(() => {
+    const it = qp.activeItems[0];
+    qp.hide();
+    if (it) resumeInTerminal(sid(it.r), it.r.cwd, it.r.title);
   });
-  if (pick) openPanel(context, { project: pick.r.project, file: pick.r.file });
+  qp.onDidTriggerItemButton((e) => {
+    qp.hide();
+    openPanel(context, { project: e.item.r.project, file: e.item.r.file });
+  });
+  qp.onDidHide(() => qp.dispose());
+  qp.show();
 }
 
 // A CLAUDE_CONFIG_DIR/projects location detected from the login shell (the GUI
@@ -132,7 +144,7 @@ function activate(context) {
     vscode.commands.registerCommand('claudeLens.reopenRecent', () => reopenRecent(context)),
     vscode.commands.registerCommand('claudeLens.openSession',
       (project, file) => openPanel(context, { project, file })),
-    vscode.commands.registerCommand('claudeLens.resumeSession', resumeFromTree),
+    vscode.commands.registerCommand('claudeLens.resumeSession', (el) => resumeFromTree(context, el)),
     vscode.commands.registerCommand('claudeLens.copyResumeCommand', copyResumeFromTree),
     vscode.window.registerWebviewViewProvider('claudeLens.dashboard', new DashboardProvider(context)),
   );
@@ -181,8 +193,9 @@ function resumeInTerminal(sessionId, cwd, title) {
   return true;
 }
 
-async function resumeFromTree(el) {
+async function resumeFromTree(context, el) {
   if (!el || el.kind !== 'sess') return;
+  if (context) recordRecent(context, el.p.slug, el.s.file);
   let title = null, cwd = null;
   try {
     const m = await scan.sessionMeta(scan.resolveSession(el.p.slug, el.s.file));
@@ -402,6 +415,7 @@ class DashboardProvider {
       if (msg.cmd === 'open') {
         vscode.commands.executeCommand('claudeLens.openSession', msg.project, msg.file);
       } else if (msg.cmd === 'resume') {
+        if (msg.project && msg.file) recordRecent(this.context, msg.project, msg.file);
         resumeInTerminal(msg.sessionId, msg.cwd || (await sessionCwd(msg.project, msg.file)), msg.title);
       } else if (msg.cmd === 'copy') {
         const cmd = resumeCommandString(msg.sessionId, msg.cwd || (await sessionCwd(msg.project, msg.file)));

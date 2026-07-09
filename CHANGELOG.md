@@ -11,6 +11,9 @@
 - The VS Code extension now **auto-detects a relocated `CLAUDE_CONFIG_DIR`**
   from your login shell (the GUI process doesn't inherit shell env), so
   sessions stored outside `~/.claude` show up without manual configuration.
+- Reopen Recent Session now resumes the chosen session in a named terminal
+  (Enter); the book icon on each entry opens the transcript viewer instead.
+  Resuming from the tree or dashboard also records the session as recent.
 - Added safe CLI aliases: `claude-lens-viewer`, `claude-lens`, and
   `session-lens` all launch the same browser viewer.
 
