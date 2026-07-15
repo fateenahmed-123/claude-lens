@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.16
+
+- Sessions are grouped and sorted by **last conversation time** (the newest
+  `timestamp` in the transcript) instead of file modification time. Fixes
+  sessions from earlier days appearing under Today after being opened in an
+  editor without new messages ([#1](https://github.com/fateenahmed-123/claude-lens/issues/1)).
+
 ## 0.4.15
 
 - Resume terminals are now named after the session title (falling back to a
