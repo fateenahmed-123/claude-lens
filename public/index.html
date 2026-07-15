@@ -982,7 +982,7 @@ function renderByProject(list) {
     det.innerHTML = `<summary title="${esc(p.name)}"><span class="tw">▶</span><span class="pn">${esc(name)}</span><span class="cnt">${p.sessions.length}</span></summary>`;
     let bucket = null;
     for (const s of p.sessions) {
-      const b = dateBucket(s.mtime);
+      const b = dateBucket(s.at);
       if (b !== bucket) {
         bucket = b;
         const h = document.createElement('div');
@@ -990,7 +990,7 @@ function renderByProject(list) {
         h.textContent = b;
         det.appendChild(h);
       }
-      det.appendChild(makeSessBtn(p, s, `${relTime(s.mtime)} · ${fmtBytes(s.size)}`));
+      det.appendChild(makeSessBtn(p, s, `${relTime(s.at)} · ${fmtBytes(s.size)}`));
     }
     list.appendChild(det);
   });
@@ -999,10 +999,10 @@ function renderByProject(list) {
 function renderByDate(list) {
   const all = [];
   for (const p of indexData.projects) for (const s of p.sessions) all.push({ p, s });
-  all.sort((a, b) => b.s.mtime - a.s.mtime);
+  all.sort((a, b) => b.s.at - a.s.at);
   let bucket = null;
   for (const { p, s } of all) {
-    const b = dateBucket(s.mtime);
+    const b = dateBucket(s.at);
     if (b !== bucket) {
       bucket = b;
       const h = document.createElement('div');
@@ -1010,7 +1010,7 @@ function renderByDate(list) {
       h.textContent = b;
       list.appendChild(h);
     }
-    list.appendChild(makeSessBtn(p, s, `${projShort(p.name)} · ${relTime(s.mtime)} · ${fmtBytes(s.size)}`));
+    list.appendChild(makeSessBtn(p, s, `${projShort(p.name)} · ${relTime(s.at)} · ${fmtBytes(s.size)}`));
   }
 }
 

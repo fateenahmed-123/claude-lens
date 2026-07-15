@@ -255,7 +255,7 @@ class SessionTreeProvider {
       const buckets = [];
       let cur = null;
       for (const s of el.p.sessions) {
-        const label = dateBucket(s.mtime);
+        const label = dateBucket(s.at);
         if (!cur || cur.label !== label) {
           cur = { kind: 'bucket', label, p: el.p, sessions: [] };
           buckets.push(cur);
@@ -284,17 +284,17 @@ class SessionTreeProvider {
         ? vscode.TreeItemCollapsibleState.Expanded
         : vscode.TreeItemCollapsibleState.Collapsed);
       it.description = String(el.sessions.length);
-      it.iconPath = new vscode.ThemeIcon('calendar', ageColor(el.sessions[0].mtime));
+      it.iconPath = new vscode.ThemeIcon('calendar', ageColor(el.sessions[0].at));
       return it;
     }
     const { p, s } = el;
     let meta = {};
     try { meta = await scan.sessionMeta(scan.resolveSession(p.slug, s.file)); } catch { /* uuid label */ }
     const it = new vscode.TreeItem(meta.title || meta.firstPrompt || s.id.slice(0, 8) + '…');
-    it.description = relTime(s.mtime);
-    it.tooltip = [meta.title, meta.firstPrompt, new Date(s.mtime).toLocaleString()]
+    it.description = relTime(s.at);
+    it.tooltip = [meta.title, meta.firstPrompt, new Date(s.at).toLocaleString()]
       .filter(Boolean).join('\n');
-    it.iconPath = new vscode.ThemeIcon('comment-discussion', ageColor(s.mtime));
+    it.iconPath = new vscode.ThemeIcon('comment-discussion', ageColor(s.at));
     it.contextValue = 'session';
     it.command = {
       command: 'claudeLens.openSession',
@@ -545,13 +545,13 @@ class DashboardProvider {
 
     const all = [];
     for (const p of projects) for (const s of p.sessions) all.push({ p, s });
-    all.sort((a, b) => b.s.mtime - a.s.mtime);
+    all.sort((a, b) => b.s.at - a.s.at);
 
     // 14-day activity: sessions touched + bytes written per day
     const days = Array.from({ length: 14 }, () => ({ n: 0, bytes: 0 }));
     const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
     for (const { s } of all) {
-      const d = Math.floor((midnight.getTime() + 86400e3 - s.mtime) / 86400e3);
+      const d = Math.floor((midnight.getTime() + 86400e3 - s.at) / 86400e3);
       if (d >= 0 && d < 14) { days[13 - d].n++; days[13 - d].bytes += s.size; }
     }
     const today = days[13], week = days.slice(7).reduce((a, d) => a + d.n, 0);
@@ -563,7 +563,7 @@ class DashboardProvider {
       const m = metas[i] || {};
       return {
         project: p.slug, projName: p.name.split('/').pop(), file: s.file,
-        sid: s.id, cwd: m.cwd || '', mtime: s.mtime, size: s.size,
+        sid: s.id, cwd: m.cwd || '', mtime: s.at, size: s.size,
         title: m.title || m.firstPrompt || s.id.slice(0, 8) + '…',
         prompt: (m.firstPrompt || '').slice(0, 300),
       };

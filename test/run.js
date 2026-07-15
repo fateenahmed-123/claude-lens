@@ -114,6 +114,23 @@ async function scanTests() {
   fs.rmSync(utmp, { recursive: true, force: true });
   ok('usage scan dedupes by requestId and buckets by day');
 
+  section('last activity vs file mtime');
+  const actTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-activity-'));
+  const actFile = path.join(actTmp, 'touched-session.jsonl');
+  fs.writeFileSync(actFile, fixture);
+  const transcriptTs = Date.parse('2026-07-01T10:00:00Z');
+  fs.utimesSync(actFile, new Date(), new Date()); // mtime = now, content is older
+  scan.setRoot(actTmp);
+  const actProjects = await scan.listProjects();
+  assert(actProjects.length === 1 && actProjects[0].sessions.length === 1, 'one session');
+  const sess = actProjects[0].sessions[0];
+  assert(sess.at === transcriptTs, 'groups by last conversation, not file mtime');
+  assert(Math.abs(sess.mtime - Date.now()) < 60000, 'file mtime preserved separately');
+  assert(sess.at < sess.mtime - 86400e3, 'activity predates touched mtime');
+  scan.setRoot(null);
+  fs.rmSync(actTmp, { recursive: true, force: true });
+  ok('session activity time comes from transcript timestamps');
+
   section('custom sessions root');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-test-'));
   fs.writeFileSync(path.join(tmp, 'loose-session.jsonl'), fixture);
