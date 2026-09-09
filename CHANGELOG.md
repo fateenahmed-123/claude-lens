@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.4.16
 
+- Sessions are grouped and sorted by **last conversation time** (the newest
+  `timestamp` in the transcript) instead of file modification time. Fixes
+  sessions from earlier days appearing under Today after being opened in an
+  editor without new messages ([#1](https://github.com/fateenahmed-123/claude-lens/issues/1)).
 - A session root pointed at a Claude **config dir** (e.g. a relocated
   `~/.claude-ecc`) now scans its `projects/` subtree automatically, instead of
   finding nothing useful. Previously you had to point at `.../projects` exactly.
