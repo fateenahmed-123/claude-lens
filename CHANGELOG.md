@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- A session root pointed at a Claude **config dir** (e.g. a relocated
+  `~/.claude-ecc`) now scans its `projects/` subtree automatically, instead of
+  finding nothing useful. Previously you had to point at `.../projects` exactly.
+- The config dir's `history.jsonl` (Claude Code's command history) is no longer
+  mistaken for a session transcript and shown as a blank "history…" session.
+- Fixed the transcript panel not scrolling in the VS Code webview — the page
+  now scrolls as a normal document rather than relying on top-level overflow
+  scrolling, which webviews don't drive.
+
 ## 0.4.15
 
 - Resume terminals are now named after the session title (falling back to a

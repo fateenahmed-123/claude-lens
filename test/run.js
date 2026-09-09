@@ -149,6 +149,22 @@ async function scanTests() {
   fs.rmSync(tmpA, { recursive: true, force: true });
   fs.rmSync(tmpB, { recursive: true, force: true });
   ok('multiple roots are merged and resolvable');
+
+  section('config dir root (points at CLAUDE_CONFIG_DIR, not its projects tree)');
+  const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-cfg-'));
+  const cfgProj = path.join(cfg, 'projects', '-tmp-real');
+  fs.mkdirSync(cfgProj, { recursive: true });
+  fs.writeFileSync(path.join(cfgProj, 'real.jsonl'), fixture);
+  fs.writeFileSync(path.join(cfg, 'history.jsonl'), fixture); // command history — must be ignored
+  scan.setRoot(cfg);
+  assert(scan.getRoot() === path.join(cfg, 'projects'), 'config dir redirects to its projects subtree');
+  const cfgProjects = await scan.listProjects();
+  const cfgSlugs = cfgProjects.map((p) => p.slug);
+  assert(cfgSlugs.includes('-tmp-real'), 'real session under projects/ is found');
+  assert(!cfgSlugs.includes('.'), 'top-level history.jsonl is not surfaced as a session');
+  scan.setRoot(null);
+  fs.rmSync(cfg, { recursive: true, force: true });
+  ok('config dir root descends into projects/ and skips history.jsonl');
 }
 
 /* ------------------------------------------------------- server tests */
