@@ -182,6 +182,33 @@ async function scanTests() {
   scan.setRoot(null);
   fs.rmSync(cfg, { recursive: true, force: true });
   ok('config dir root descends into projects/ and skips history.jsonl');
+
+  section('highlights (standup summary)');
+  const hl = require('../lib/highlights');
+  // windowRange is a pure function — check yesterday is the full prior day.
+  const noon = Date.parse('2026-07-02T12:00:00Z');
+  const y = hl.windowRange('yesterday', noon);
+  assert(y.to - y.from === 86400e3 && y.to <= noon, 'yesterday spans exactly one day ending at/before now');
+  assert(hl.windowRange('today', noon).from < noon && hl.windowRange('7d', noon).from < y.from, 'today/7d ranges');
+
+  const htmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-hl-'));
+  const hproj = path.join(htmp, '-tmp-widget');
+  fs.mkdirSync(hproj);
+  fs.writeFileSync(path.join(hproj, 'h.jsonl'), fixture);
+  scan.setRoot(htmp);
+  // fixture timestamps are 2026-07-01T10:00Z; view "now" as an hour later.
+  const rep = await hl.buildHighlights({ window: '7d', now: Date.parse('2026-07-01T11:00:00Z') });
+  assert(rep.projects.length === 1 && rep.projects[0].name === 'widget', 'one project, base-named');
+  const g = rep.projects[0];
+  assert(g.tests.length >= 1, 'detected the pytest run as a test');
+  assert(g.bullets.some((b) => /flaky/i.test(b)), 'bullet derived from the prompt');
+  assert(rep.markdown.includes("# Last 7 days's Highlights") && rep.markdown.includes('## widget'), 'markdown renders');
+  assert(rep.slack.includes('*widget*') && rep.aiPrompt.includes('standup'), 'slack + ai-prompt renderings');
+  const empty = await hl.buildHighlights({ window: 'yesterday', now: Date.parse('2030-01-01T00:00:00Z') });
+  assert(empty.projects.length === 0 && /no claude code activity/i.test(empty.markdown), 'empty window handled');
+  scan.setRoot(null);
+  fs.rmSync(htmp, { recursive: true, force: true });
+  ok('highlights summarize in-window activity into standup markdown/slack');
 }
 
 /* ------------------------------------------------------- server tests */

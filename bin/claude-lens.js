@@ -18,6 +18,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const scan = require('../lib/scan.js');
+const highlights = require('../lib/highlights.js');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
@@ -76,6 +77,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/projects') {
       const projects = await scan.listProjects();
       return json(res, 200, { root: scan.getRootDisplay(), single: !!singleFile, projects });
+    }
+
+    if (url.pathname === '/api/highlights') {
+      const win = url.searchParams.get('window') || 'yesterday';
+      return json(res, 200, await highlights.buildHighlights({ window: win }));
     }
 
     if (url.pathname === '/api/meta') {
