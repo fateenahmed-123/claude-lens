@@ -1,7 +1,7 @@
 {
   "name": "claude-lens-viewer",
   "displayName": "Session Lens for Claude Code",
-  "version": "0.4.16",
+  "version": "0.5.0",
   "description": "A rich, minimal viewer for Claude Code CLI session transcripts: prompts, thinking, tool calls, diffs, token stats, resume & context export",
   "publisher": "fahmed",
   "icon": "icon.png",
@@ -60,6 +60,16 @@
         "command": "claudeLens.copyResumeCommand",
         "title": "Copy Resume Command",
         "icon": "$(copy)"
+      },
+      {
+        "command": "claudeLens.highlights",
+        "title": "Claude Lens: Yesterday's Highlights",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "claudeLens.openInBrowser",
+        "title": "Claude Lens: Open in Browser",
+        "icon": "$(globe)"
       }
     ],
     "viewsContainers": {
@@ -122,14 +132,24 @@
     "menus": {
       "view/title": [
         {
-          "command": "claudeLens.reopenRecent",
+          "command": "claudeLens.highlights",
+          "when": "view == claudeLens.sessions",
+          "group": "navigation@0"
+        },
+        {
+          "command": "claudeLens.openInBrowser",
           "when": "view == claudeLens.sessions",
           "group": "navigation@1"
         },
         {
-          "command": "claudeLens.refresh",
+          "command": "claudeLens.reopenRecent",
           "when": "view == claudeLens.sessions",
           "group": "navigation@2"
+        },
+        {
+          "command": "claudeLens.refresh",
+          "when": "view == claudeLens.sessions",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

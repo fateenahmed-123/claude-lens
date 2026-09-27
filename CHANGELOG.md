@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+- **Highlights** — a standup-ready summary of what you did with Claude. Groups
+  the day's work by project with bullets drawn from your prompts, changed files,
+  commands, tests, and commits. Pick **Yesterday / Today / Last 7 days**, then
+  **Copy** as markdown or **Slack**. Fully offline; no work leaves your machine.
+  - In VS Code: the **✦** button on the Sessions view (and the "Yesterday's
+    Highlights" command). Includes **Polish with AI**, which rewrites the notes
+    as prose using your local `claude` CLI.
+  - In the web viewer: the **✦ Standup** button, served at `/api/highlights` so
+    anyone using an agentic IDE can reach it over the local URL.
+- **Open in Browser** — a globe button on the Sessions view launches the local
+  viewer and opens it in your browser. Stays on-device (binds to loopback).
+
 ## 0.4.16
 
 - Sessions are grouped and sorted by **last conversation time** (the newest

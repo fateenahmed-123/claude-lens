@@ -14,7 +14,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
+const http = require('http');
 const scan = require('../lib/scan.js');
+const highlights = require('../lib/highlights.js');
 
 let panel = null;
 let panelReady = false;
@@ -146,8 +148,112 @@ function activate(context) {
       (project, file) => openPanel(context, { project, file })),
     vscode.commands.registerCommand('claudeLens.resumeSession', (el) => resumeFromTree(context, el)),
     vscode.commands.registerCommand('claudeLens.copyResumeCommand', copyResumeFromTree),
+    vscode.commands.registerCommand('claudeLens.highlights', () => showHighlights(context)),
+    vscode.commands.registerCommand('claudeLens.openInBrowser', () => openInBrowser()),
     vscode.window.registerWebviewViewProvider('claudeLens.dashboard', new DashboardProvider(context)),
   );
+}
+
+// ------------------------------------------------- local server + browser
+
+let localServer = null; // { proc, url }
+
+/**
+ * Start the bundled CLI viewer on a loopback port (once) and return its URL.
+ * Everything stays on-device — the server binds to 127.0.0.1 and reads the
+ * same local session files. Reuses a running instance across calls.
+ */
+function startLocalServer() {
+  if (localServer) return Promise.resolve(localServer.url);
+  return new Promise((resolve, reject) => {
+    const bin = path.join(__dirname, '..', 'bin', 'claude-lens.js');
+    const roots = scan.getRoots();
+    const args = [bin, '--no-open', '--port', '0'];
+    for (const r of roots) { args.push('--dir', r); }
+    const proc = cp.spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let done = false;
+    const fail = (e) => { if (!done) { done = true; reject(e); } };
+    proc.on('error', fail);
+    proc.on('exit', () => { if (localServer && localServer.proc === proc) localServer = null; });
+    // The CLI prints the chosen URL on startup; capture it.
+    const onData = (buf) => {
+      const m = String(buf).match(/https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/?/);
+      if (m && !done) { done = true; localServer = { proc, url: m[0].replace(/\/$/, '') }; resolve(localServer.url); }
+    };
+    proc.stdout.on('data', onData);
+    proc.stderr.on('data', onData);
+    setTimeout(() => fail(new Error('viewer did not start in time')), 8000);
+  });
+}
+
+async function openInBrowser() {
+  try {
+    const url = await startLocalServer();
+    await vscode.env.openExternal(vscode.Uri.parse(url));
+  } catch (e) {
+    vscode.window.showErrorMessage('Claude Lens: could not open the local viewer — ' + e.message);
+  }
+}
+
+// ------------------------------------------------------- highlights panel
+
+let hlPanel = null;
+
+function showHighlights(context) {
+  if (hlPanel) { hlPanel.reveal(); return; }
+  hlPanel = vscode.window.createWebviewPanel(
+    'claudeLens.highlights', 'Highlights',
+    vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
+  hlPanel.iconPath = vscode.Uri.file(path.join(__dirname, '..', 'media', 'lens.svg'));
+  hlPanel.onDidDispose(() => { hlPanel = null; }, null, context.subscriptions);
+  hlPanel.webview.html = highlightsHtml();
+
+  const send = async (win) => {
+    try {
+      const report = await highlights.buildHighlights({ window: win });
+      hlPanel.webview.postMessage({ type: 'report', win, report });
+    } catch (e) {
+      hlPanel.webview.postMessage({ type: 'error', message: e.message });
+    }
+  };
+
+  hlPanel.webview.onDidReceiveMessage(async (msg) => {
+    if (msg.cmd === 'load') return send(msg.window);
+    if (msg.cmd === 'copy') {
+      await vscode.env.clipboard.writeText(String(msg.text || ''));
+      vscode.window.setStatusBarMessage('Highlights copied', 2500);
+      return;
+    }
+    if (msg.cmd === 'polish') {
+      try {
+        const md = await polishWithClaude(String(msg.prompt || ''));
+        hlPanel.webview.postMessage({ type: 'polished', markdown: md });
+      } catch (e) {
+        hlPanel.webview.postMessage({ type: 'polishError', message: e.message });
+      }
+    }
+  }, null, context.subscriptions);
+}
+
+/**
+ * Pipe the heuristic report to the user's local `claude` CLI for polishing.
+ * Runs through the login shell so it finds `claude` on PATH (the GUI process
+ * doesn't inherit it), prompt on stdin so nothing needs shell-escaping.
+ */
+function polishWithClaude(prompt) {
+  return new Promise((resolve, reject) => {
+    const shell = process.env.SHELL || '/bin/bash';
+    const child = cp.spawn(shell, ['-lic', 'claude -p'], { timeout: 90000 });
+    let out = '', err = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0 && out.trim()) resolve(out.trim());
+      else reject(new Error(err.trim() || 'claude CLI unavailable (is it installed and logged in?)'));
+    });
+    child.stdin.end(prompt);
+  });
 }
 
 /** `cd <cwd> && claude --resume <id>`, or null if the id is unusable. */
@@ -734,6 +840,92 @@ class DashboardProvider {
   }
 }
 
-function deactivate() {}
+function highlightsHtml() {
+  return `<!doctype html><html><head><meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <style>
+    body { font: 13px var(--vscode-font-family); color: var(--vscode-foreground);
+      padding: 0 0 40px; margin: 0; }
+    header { position: sticky; top: 0; background: var(--vscode-editor-background);
+      display: flex; align-items: center; gap: 10px; padding: 12px 20px;
+      border-bottom: 1px solid var(--vscode-panel-border); z-index: 2; }
+    .win { display: flex; gap: 4px; }
+    .win button, .act button { font: 12px var(--vscode-font-family); cursor: pointer;
+      background: none; color: var(--vscode-descriptionForeground);
+      border: 1px solid transparent; border-radius: 6px; padding: 4px 10px; }
+    .win button.active { background: var(--vscode-toolbar-hoverBackground);
+      color: var(--vscode-foreground); font-weight: 600; }
+    .win button:hover, .act button:hover { color: var(--vscode-foreground); }
+    .act { margin-left: auto; display: flex; gap: 4px; }
+    main { padding: 6px 24px; max-width: 820px; }
+    h1 { font-size: 19px; margin: 16px 0 2px; }
+    .sub { color: var(--vscode-descriptionForeground); margin-bottom: 6px; }
+    h2 { font-size: 14px; margin: 22px 0 4px; color: var(--vscode-textLink-foreground);
+      border-top: 1px solid var(--vscode-panel-border); padding-top: 14px; }
+    h2 span { color: var(--vscode-descriptionForeground); font-weight: 400; font-size: 12px; }
+    ul { margin: 4px 0; padding-left: 20px; } li { margin: 3px 0; line-height: 1.5; }
+    .meta { color: var(--vscode-descriptionForeground); font-size: 12px; margin: 4px 0; }
+    .muted { color: var(--vscode-descriptionForeground); padding: 40px 0; text-align: center; }
+    .badge { font-size: 11px; color: var(--vscode-descriptionForeground); }
+  </style></head><body>
+  <header>
+    <div class="win">
+      <button data-w="yesterday" class="active">Yesterday</button>
+      <button data-w="today">Today</button>
+      <button data-w="7d">Last 7 days</button>
+    </div>
+    <div class="act">
+      <button id="polish" title="Rewrite as polished prose with your local Claude CLI">✦ Polish with AI</button>
+      <button id="copy">Copy</button>
+      <button id="slack">Slack</button>
+    </div>
+  </header>
+  <main id="body"><div class="muted">Summarizing…</div></main>
+  <script>
+    const vs = acquireVsCodeApi();
+    let win = 'yesterday', report = null;
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const body = document.getElementById('body');
+    function setWin(w) { win = w; document.querySelectorAll('.win button').forEach((b) => b.classList.toggle('active', b.dataset.w === w));
+      body.innerHTML = '<div class="muted">Summarizing…</div>'; vs.postMessage({ cmd: 'load', window: w }); }
+    function render(r) {
+      report = r;
+      if (!r.projects.length) { body.innerHTML = '<div class="muted">No Claude Code activity ' + esc(r.window.label.toLowerCase()) + '.</div>'; return; }
+      const t = r.totals;
+      let h = '<h1>' + esc(r.window.label) + "'s Highlights</h1>";
+      h += '<div class="sub">' + t.sessions + ' sessions · ' + t.projects + ' projects · ~' + fmtDur(t.activeMs) + ' active · ' + t.files + ' files changed' + (t.commits ? ' · ' + t.commits + ' commits' : '') + '</div>';
+      for (const g of r.projects) {
+        h += '<h2>' + esc(g.name) + ' <span>(' + g.sessions + ' session' + (g.sessions === 1 ? '' : 's') + ' · ' + fmtDur(g.activeMs) + ')</span></h2>';
+        h += '<ul>' + g.bullets.map((b) => '<li>' + esc(b) + '</li>').join('') + '</ul>';
+        const meta = [];
+        if (g.files.length) meta.push('Files: ' + g.files.slice(0, 6).map((f) => esc(f.file) + (f.edits > 1 ? ' ×' + f.edits : '')).join(', '));
+        if (g.tests.length) meta.push('Tests run: ' + g.tests.length);
+        if (meta.length) h += '<div class="meta">' + meta.join(' · ') + '</div>';
+      }
+      body.innerHTML = h;
+    }
+    function fmtDur(ms) { if (!ms) return '0m'; const m = Math.round(ms / 60000); if (m < 60) return m + 'm'; const hh = Math.floor(m / 60); return hh + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : ''); }
+    function mdLite(src) { return esc(src).split('\\n').map((l) => {
+      if (/^##\\s/.test(l)) return '<h2>' + l.slice(3) + '</h2>';
+      if (/^#\\s/.test(l)) return '<h1>' + l.slice(2) + '</h1>';
+      if (/^[-*]\\s/.test(l)) return '<li>' + l.slice(2) + '</li>';
+      return l.trim() ? '<p>' + l + '</p>' : ''; }).join('').replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>'); }
+    document.querySelectorAll('.win button').forEach((b) => b.addEventListener('click', () => setWin(b.dataset.w)));
+    document.getElementById('copy').addEventListener('click', () => report && vs.postMessage({ cmd: 'copy', text: report.markdown }));
+    document.getElementById('slack').addEventListener('click', () => report && vs.postMessage({ cmd: 'copy', text: report.slack }));
+    document.getElementById('polish').addEventListener('click', () => { if (!report || !report.projects.length) return;
+      body.innerHTML = '<div class="muted">Polishing with your local Claude…</div>'; vs.postMessage({ cmd: 'polish', prompt: report.aiPrompt }); });
+    window.addEventListener('message', (e) => { const m = e.data;
+      if (m.type === 'report' && m.win === win) render(m.report);
+      else if (m.type === 'polished') body.innerHTML = '<div class="badge">✦ Polished by your local Claude</div>' + mdLite(m.markdown);
+      else if (m.type === 'polishError') { render(report); body.innerHTML += '<div class="muted">Could not polish: ' + esc(m.message) + '</div>'; }
+      else if (m.type === 'error') body.innerHTML = '<div class="muted">Could not load highlights: ' + esc(m.message) + '</div>'; });
+    setWin('yesterday');
+  </script></body></html>`;
+}
+
+function deactivate() {
+  if (localServer && localServer.proc) { try { localServer.proc.kill(); } catch { /* ignore */ } }
+}
 
 module.exports = { activate, deactivate };

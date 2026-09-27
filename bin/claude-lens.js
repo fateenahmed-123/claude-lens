@@ -32,7 +32,7 @@ const dirs = [];
 
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
-  if (a === '--port' || a === '-p') port = Number(args[++i]) || port;
+  if (a === '--port' || a === '-p') { const v = args[++i]; port = v === '0' ? 0 : (Number(v) || port); } // 0 = ephemeral
   else if (a === '--dir' || a === '-d') dirs.push(args[++i]);
   else if (a === '--no-open') noOpen = true;
   else if (a === '--help' || a === '-h') {
@@ -131,7 +131,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  const addr = `http://localhost:${port}${singleFile ? '/?single=1' : ''}`;
+  const actual = server.address().port; // resolves the real port when 0 (ephemeral)
+  const addr = `http://localhost:${actual}${singleFile ? '/?single=1' : ''}`;
   console.log(`claude-lens ready → ${addr}`);
   if (!noOpen) {
     const cmd = process.platform === 'darwin' ? 'open'
