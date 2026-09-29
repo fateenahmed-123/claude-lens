@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1
+
+- Fixed the **Highlights overlay in the web viewer**: it appeared on page load
+  and its ✕ button could not dismiss it (an id selector was overriding the
+  `hidden` attribute). It now stays hidden until opened and closes cleanly.
+- Commit-derived bullets no longer bleed trailing shell (a chained `&& git …`,
+  a second `-m`, or stray quotes) into the message.
+
 ## 0.5.0
 
 - **Highlights** — a standup-ready summary of what you did with Claude. Groups

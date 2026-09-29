@@ -330,6 +330,9 @@
     align-items: flex-start; justify-content: center; padding: 6vh 16px;
     background: color-mix(in oklab, var(--bg) 55%, transparent);
     backdrop-filter: blur(3px); }
+  /* An id selector outweighs the UA [hidden] rule, so hide it explicitly —
+     otherwise the overlay shows on load and the ✕ button can't dismiss it. */
+  #standup[hidden] { display: none; }
   #standup-card { width: min(760px, 100%); max-height: 86vh; display: flex;
     flex-direction: column; background: var(--panel);
     border: 1px solid var(--line-soft); border-radius: 14px;
