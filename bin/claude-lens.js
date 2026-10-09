@@ -87,22 +87,22 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/meta') {
       const file = scan.resolveSession(url.searchParams.get('project'), url.searchParams.get('file'));
       if (!file) return json(res, 400, { error: 'bad path' });
-      return json(res, 200, await scan.sessionMeta(file));
+      return json(res, 200, await scan.sessionMeta(file, url.searchParams.get('agent') || undefined));
     }
 
     if (url.pathname === '/api/session') {
       const file = scan.resolveSession(url.searchParams.get('project'), url.searchParams.get('file'));
       if (!file) return json(res, 400, { error: 'bad path' });
+      const text = await scan.sessionText(file, url.searchParams.get('agent') || undefined);
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8' });
-      fs.createReadStream(file).on('error', () => res.end()).pipe(res);
-      return;
+      return res.end(text);
     }
 
     if (url.pathname === '/api/single') {
       if (!singleFile) return json(res, 404, { error: 'no file given' });
+      const text = await scan.sessionText(singleFile);
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8' });
-      fs.createReadStream(singleFile).on('error', () => res.end()).pipe(res);
-      return;
+      return res.end(text);
     }
 
     // static

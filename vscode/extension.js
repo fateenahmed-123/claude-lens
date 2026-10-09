@@ -52,7 +52,7 @@ function getRecent(context) {
 async function reopenRecent(context) {
   const recent = getRecent(context);
   if (!recent.length) {
-    vscode.window.showInformationMessage('claude-lens: no recently opened sessions yet.');
+    vscode.window.showInformationMessage('Agent Lens: no recently opened sessions yet.');
     return;
   }
   const sid = (r) => r.file.replace(/\.jsonl$/, '');
@@ -272,9 +272,9 @@ async function sessionCwd(projectSlug, file) {
 async function copyResumeFromTree(el) {
   if (!el || el.kind !== 'sess') return;
   const cmd = resumeCommandString(el.s.id, await sessionCwd(el.p.slug, el.s.file));
-  if (!cmd) return void vscode.window.showWarningMessage('claude-lens: unusable session id');
+  if (!cmd) return void vscode.window.showWarningMessage('Agent Lens: unusable session id');
   await vscode.env.clipboard.writeText(cmd);
-  vscode.window.setStatusBarMessage('claude-lens: resume command copied', 3000);
+  vscode.window.setStatusBarMessage('Agent Lens: resume command copied', 3000);
 }
 
 /** Terminal tab label from a session title, falling back to a short id. */
@@ -289,7 +289,7 @@ function resumeInTerminal(sessionId, cwd, title) {
   // The id and cwd come from transcript files; only a strict uuid-like
   // token may ever reach the terminal, and cwd must exist on disk.
   if (!/^[A-Za-z0-9-]{4,64}$/.test(sessionId)) {
-    vscode.window.showWarningMessage('claude-lens: unusable session id');
+    vscode.window.showWarningMessage('Agent Lens: unusable session id');
     return false;
   }
   const dir = cwd && fs.existsSync(cwd) ? cwd : undefined;
@@ -395,10 +395,11 @@ class SessionTreeProvider {
     }
     const { p, s } = el;
     let meta = {};
-    try { meta = await scan.sessionMeta(scan.resolveSession(p.slug, s.file)); } catch { /* uuid label */ }
+    try { meta = await scan.sessionMeta(scan.resolveSession(p.slug, s.file), s.agent); } catch { /* uuid label */ }
+    const agentTag = s.agent && s.agent !== 'claude' ? ({ codex: 'Codex', gemini: 'Gemini' }[s.agent] || s.agent) : '';
     const it = new vscode.TreeItem(meta.title || meta.firstPrompt || s.id.slice(0, 8) + '…');
-    it.description = relTime(s.at);
-    it.tooltip = [meta.title, meta.firstPrompt, new Date(s.at).toLocaleString()]
+    it.description = agentTag ? `${agentTag} · ${relTime(s.at)}` : relTime(s.at);
+    it.tooltip = [meta.title, meta.firstPrompt, agentTag && ('Agent: ' + agentTag), new Date(s.at).toLocaleString()]
       .filter(Boolean).join('\n');
     it.iconPath = new vscode.ThemeIcon('comment-discussion', ageColor(s.at));
     it.contextValue = 'session';
@@ -458,11 +459,11 @@ function openPanel(context, sel) {
       } else if (msg.cmd === 'meta') {
         const f = scan.resolveSession(msg.args.project, msg.args.file);
         if (!f) return reply(false, null, 'bad path');
-        reply(true, await scan.sessionMeta(f));
+        reply(true, await scan.sessionMeta(f, msg.args.agent));
       } else if (msg.cmd === 'session') {
         const f = scan.resolveSession(msg.args.project, msg.args.file);
         if (!f) return reply(false, null, 'bad path');
-        reply(true, await fs.promises.readFile(f, 'utf8'));
+        reply(true, await scan.sessionText(f, msg.args.agent));
       } else if (msg.cmd === 'resume') {
         if (!resumeInTerminal(String(msg.args.sessionId || ''), msg.args.cwd, msg.args.title)) {
           return reply(false, null, 'bad session id');
@@ -527,7 +528,7 @@ class DashboardProvider {
         const cmd = resumeCommandString(msg.sessionId, msg.cwd || (await sessionCwd(msg.project, msg.file)));
         if (cmd) {
           await vscode.env.clipboard.writeText(cmd);
-          vscode.window.setStatusBarMessage('claude-lens: resume command copied', 3000);
+          vscode.window.setStatusBarMessage('Agent Lens: resume command copied', 3000);
         }
       } else if (msg.cmd === 'refresh') {
         this.render();
@@ -748,7 +749,7 @@ class DashboardProvider {
       <div id="left">
         <div id="toprow">
           <div class="stats">
-            <h3>Claude Code</h3>
+            <h3>Sessions</h3>
             <div class="stat"><b>${today.n}</b><span>today · ${fmtMB(today.bytes)}</span></div>
             <div class="stat"><b>${week}</b><span>this week</span></div>
             <div class="stat"><b>${all.length}</b><span>total sessions</span></div>

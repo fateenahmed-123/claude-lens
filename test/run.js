@@ -104,6 +104,10 @@ ok('path traversal rejected');
 const os = require('os');
 
 async function scanTests() {
+  // Isolate project-scan tests from any real Codex history on this machine;
+  // the Codex adapter is exercised explicitly in its own section below.
+  scan.setIncludeCodex(false);
+
   section('usage stats');
   const utmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-usage-'));
   fs.writeFileSync(path.join(utmp, 'u.jsonl'), fixture);
@@ -209,6 +213,45 @@ async function scanTests() {
   scan.setRoot(null);
   fs.rmSync(htmp, { recursive: true, force: true });
   ok('highlights summarize in-window activity into standup markdown/slack');
+
+  section('codex adapter (multi-agent)');
+  const rollout = [
+    { timestamp: '2026-07-01T10:00:00Z', type: 'session_meta', payload: { session_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', cwd: '/tmp/widget' } },
+    { timestamp: '2026-07-01T10:00:01Z', type: 'turn_context', payload: { model: 'gpt-5.5', cwd: '/tmp/widget' } },
+    { timestamp: '2026-07-01T10:00:02Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'fix the flaky test please' }] } },
+    { timestamp: '2026-07-01T10:00:03Z', type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Looking into it.' }] } },
+    { timestamp: '2026-07-01T10:00:04Z', type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'c1', name: 'exec', input: 'pytest -k foo' } },
+    { timestamp: '2026-07-01T10:00:05Z', type: 'response_item', payload: { type: 'custom_tool_call_output', call_id: 'c1', output: [{ type: 'input_text', text: '1 passed' }] } },
+    { timestamp: '2026-07-01T10:00:06Z', type: 'token_usage_record', payload: { response_id: 'r1', usage: { input_tokens: 100, output_tokens: 40, cached_input_tokens: 10 } } },
+  ].map((o) => JSON.stringify(o)).join('\n');
+  const cxRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-codex-'));
+  const cxDay = path.join(cxRoot, '2026', '07', '01');
+  fs.mkdirSync(cxDay, { recursive: true });
+  const cxFile = path.join(cxDay, 'rollout-2026-07-01T10-00-00-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl');
+  fs.writeFileSync(cxFile, rollout);
+  const emptyClaude = fs.mkdtempSync(path.join(os.tmpdir(), 'lens-empty-'));
+  scan.setRoots([emptyClaude]); scan.setIncludeCodex(true); scan.setCodexRoots([cxRoot]);
+  const cxProjects = await scan.listProjects();
+  assert(cxProjects.length === 1, 'codex session surfaces as one project');
+  const cs = cxProjects[0].sessions[0];
+  assert(cs.agent === 'codex', 'session tagged as codex');
+  assert(cs.at === Date.parse('2026-07-01T10:00:06Z'), 'at = last rollout timestamp');
+  assert(scan.agentOf(cs.file) === 'codex', 'agentOf resolves from registry');
+  const cxPath = scan.resolveSession(cxProjects[0].slug, cs.file);
+  assert(cxPath === cxFile, 'resolveSession finds the nested rollout');
+  const norm = await scan.sessionText(cxPath, 'codex');
+  assert(norm.includes('"tool_use"') && norm.includes('pytest -k foo') && norm.includes('"thinking"') === false, 'normalized to Claude-schema tool_use');
+  assert(norm.includes('"type":"assistant"') && norm.includes('Looking into it.'), 'assistant text normalized');
+  const cxMeta = await scan.sessionMeta(cxPath, 'codex');
+  assert(/^fix the flaky/.test(cxMeta.firstPrompt) && cxMeta.model === 'gpt-5.5', 'codex meta: first prompt + model');
+  const cxUsage = await scan.usageStats(cxPath, 'codex');
+  assert(cxUsage.models['gpt-5.5'] && cxUsage.models['gpt-5.5'].in === 90 && cxUsage.models['gpt-5.5'].cr === 10 && cxUsage.models['gpt-5.5'].out === 40, 'codex usage: uncached input, cache read, output');
+  const cxHi = await hl.buildHighlights({ window: '7d', now: Date.parse('2026-07-01T11:00:00Z') });
+  assert(cxHi.projects.length === 1 && cxHi.projects[0].tests.length >= 1, 'highlights span codex: pytest detected');
+  scan.setIncludeCodex(false); scan.setCodexRoots(null); scan.setRoot(null);
+  fs.rmSync(cxRoot, { recursive: true, force: true });
+  fs.rmSync(emptyClaude, { recursive: true, force: true });
+  ok('codex rollouts normalize, list, resolve, and feed meta/usage/highlights');
 }
 
 /* ------------------------------------------------------- server tests */
