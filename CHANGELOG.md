@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0
+
+- **Now Agent Lens — multi-agent.** Alongside Claude Code, the viewer reads
+  **OpenAI Codex** sessions (`~/.codex/sessions`) and merges them into the same
+  project view. Each session shows a **Codex** badge; Claude and Codex sessions
+  for the same repo group together and sort by last activity.
+  - Codex rollouts are normalized into the shared transcript model, so prompts,
+    assistant replies, tool calls (exec/apply-patch/read), reasoning markers,
+    **token usage**, and **model** all render — and **Highlights** standups now
+    span every agent you use.
+  - A session adapter layer (`lib/adapters/`) makes adding more agents (Gemini
+    next) a matter of one mapping module.
+- The extension ID and `claudeLens.*` settings are unchanged, so existing
+  installs and configuration carry over.
+
 ## 0.5.1
 
 - Fixed the **Highlights overlay in the web viewer**: it appeared on page load

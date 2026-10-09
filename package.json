@@ -1,8 +1,8 @@
 {
   "name": "claude-lens-viewer",
-  "displayName": "Session Lens for Claude Code",
-  "version": "0.5.1",
-  "description": "A rich, minimal viewer for Claude Code CLI session transcripts: prompts, thinking, tool calls, diffs, token stats, resume & context export",
+  "displayName": "Agent Lens",
+  "version": "0.6.0",
+  "description": "A rich, minimal viewer for AI coding-agent sessions — Claude Code and Codex — in one place: prompts, thinking, tool calls, diffs, token stats, standup highlights, resume & context export",
   "publisher": "fahmed",
   "icon": "icon.png",
   "repository": {
@@ -35,7 +35,7 @@
     "commands": [
       {
         "command": "claudeLens.open",
-        "title": "Claude Lens: Open Session Viewer"
+        "title": "Agent Lens: Open Session Viewer"
       },
       {
         "command": "claudeLens.refresh",
@@ -44,12 +44,12 @@
       },
       {
         "command": "claudeLens.reopenRecent",
-        "title": "Claude Lens: Reopen Recent Session",
+        "title": "Agent Lens: Reopen Recent Session",
         "icon": "$(history)"
       },
       {
         "command": "claudeLens.openSession",
-        "title": "Claude Lens: Open Specific Session"
+        "title": "Agent Lens: Open Specific Session"
       },
       {
         "command": "claudeLens.resumeSession",
@@ -63,12 +63,12 @@
       },
       {
         "command": "claudeLens.highlights",
-        "title": "Claude Lens: Yesterday's Highlights",
+        "title": "Agent Lens: Yesterday's Highlights",
         "icon": "$(sparkle)"
       },
       {
         "command": "claudeLens.openInBrowser",
-        "title": "Claude Lens: Open in Browser",
+        "title": "Agent Lens: Open in Browser",
         "icon": "$(globe)"
       }
     ],
@@ -76,14 +76,14 @@
       "activitybar": [
         {
           "id": "claude-lens",
-          "title": "Claude Lens",
+          "title": "Agent Lens",
           "icon": "media/lens.svg"
         }
       ],
       "panel": [
         {
           "id": "claude-lens-panel",
-          "title": "Claude Lens",
+          "title": "Agent Lens",
           "icon": "media/lens.svg"
         }
       ]
@@ -106,7 +106,7 @@
       ]
     },
     "configuration": {
-      "title": "Claude Lens",
+      "title": "Agent Lens",
       "properties": {
         "claudeLens.projectsDirs": {
           "type": "array",
@@ -126,7 +126,7 @@
     "viewsWelcome": [
       {
         "view": "claudeLens.sessions",
-        "contents": "No Claude Code sessions found on this machine.\nSessions appear here after you use the [Claude Code CLI](https://claude.com/claude-code). By default they are read locally from ~/.claude/projects; configure `claudeLens.projectsDirs` if yours live elsewhere.\n[Refresh](command:claudeLens.refresh)"
+        "contents": "No agent sessions found on this machine.\nSessions appear here after you use the [Claude Code CLI](https://claude.com/claude-code) or [Codex](https://openai.com/codex). They are read locally from ~/.claude/projects and ~/.codex/sessions; configure `claudeLens.projectsDirs` if yours live elsewhere.\n[Refresh](command:claudeLens.refresh)"
       }
     ],
     "menus": {
@@ -204,10 +204,15 @@
   "keywords": [
     "claude",
     "claude-code",
+    "codex",
+    "openai-codex",
+    "ai-agent",
+    "coding-agent",
     "transcript",
     "viewer",
     "jsonl",
-    "session"
+    "session",
+    "standup"
   ],
   "license": "MIT"
 }

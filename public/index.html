@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>claude-lens</title>
+<title>Agent Lens</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M15.4 5.2 C12.6 4.4 11.4 5.9 11.4 7.9 L11.4 13.2' fill='none' stroke='%23d67a54' stroke-width='2.1' stroke-linecap='round'/%3E%3Cline x1='7.8' y1='9.8' x2='15.2' y2='9.8' stroke='%23d67a54' stroke-width='2.1' stroke-linecap='round'/%3E%3Ccircle cx='11.4' cy='16.7' r='1.35' fill='%23d67a54'/%3E%3Ccircle cx='11.4' cy='20.2' r='1.35' fill='%23d67a54'/%3E%3C/svg%3E">
 <style>
   :root {
@@ -131,6 +131,10 @@
   }
   .sess.active .t { color: var(--accent-ink); }
   .sess .m { display: block; font-size: 11px; color: var(--faint); margin-top: 1px; font-family: var(--mono); }
+  .sess .ag { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 0.5px 5px; border-radius: 4px; margin-left: 6px;
+    vertical-align: 1px; background: color-mix(in oklab, var(--think) 20%, transparent);
+    color: var(--think); border: 1px solid color-mix(in oklab, var(--think) 30%, transparent); }
   #side-foot { padding: 10px 18px; border-top: 1px solid var(--line); font-size: 11px; color: var(--faint); }
   #side-foot code { font-family: var(--mono); }
 
@@ -361,7 +365,7 @@
 <body>
 
 <aside id="sidebar">
-  <div id="brand"><span class="name">claude-lens</span><span class="ver" id="ver">__LENS_VERSION__</span></div>
+  <div id="brand"><span class="name">agent-lens</span><span class="ver" id="ver">__LENS_VERSION__</span></div>
   <div id="view-toggle" role="tablist" aria-label="Sidebar arrangement">
     <button data-v="date">By date</button>
     <button data-v="project">By project</button>
@@ -372,7 +376,7 @@
 
 <main id="main">
   <header id="topbar">
-    <h1 id="title">claude-lens</h1>
+    <h1 id="title">agent-lens</h1>
     <div id="stats"></div>
     <div id="controls">
       <input id="search" type="search" placeholder="Filter turns…" aria-label="Filter turns">
@@ -387,7 +391,7 @@
   <div id="scroll">
     <div id="empty">
       <h2>Pick a session</h2>
-      <p>Choose a session from the sidebar, or drop any Claude Code <code>.jsonl</code> transcript anywhere on this page.</p>
+      <p>Choose a session from the sidebar, or drop any Claude Code or Codex <code>.jsonl</code> transcript anywhere on this page.</p>
       <p><kbd>j</kbd> / <kbd>k</kbd> jump between prompts once a session is open.</p>
     </div>
     <div id="transcript"></div>
@@ -553,10 +557,11 @@ function rpc(cmd, args) {
 }
 const apiProjects = () => vscodeApi ? rpc('projects')
   : fetch('/api/projects').then((r) => r.json());
-const apiMeta = (project, file) => vscodeApi ? rpc('meta', { project, file })
-  : fetch(`/api/meta?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`).then((r) => r.json());
-const apiSessionText = (project, file) => vscodeApi ? rpc('session', { project, file })
-  : fetch(`/api/session?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`).then((r) => r.text());
+const agentQ = (agent) => agent ? `&agent=${encodeURIComponent(agent)}` : '';
+const apiMeta = (project, file, agent) => vscodeApi ? rpc('meta', { project, file, agent })
+  : fetch(`/api/meta?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}${agentQ(agent)}`).then((r) => r.json());
+const apiSessionText = (project, file, agent) => vscodeApi ? rpc('session', { project, file, agent })
+  : fetch(`/api/session?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}${agentQ(agent)}`).then((r) => r.text());
 function rememberUrl(qs) {
   if (vscodeApi) return;
   try { history.replaceState(null, '', qs || location.pathname); } catch { /* sandboxed */ }
@@ -1008,12 +1013,16 @@ function makeSessBtn(p, s, metaText) {
   b.className = 'sess';
   b.dataset.project = p.slug;
   b.dataset.file = s.file;
+  if (s.agent) b.dataset.agent = s.agent;
   if (state.sel && state.sel.project === p.slug && state.sel.file === s.file) b.classList.add('active');
-  b.innerHTML = `<span class="t">${esc(s.id.slice(0, 8))}…</span><span class="m">${esc(metaText)}</span>`;
+  const badge = s.agent && s.agent !== 'claude' ? `<span class="ag ag-${esc(s.agent)}">${esc(agentLabel(s.agent))}</span>` : '';
+  b.innerHTML = `<span class="t">${esc(s.id.slice(0, 8))}…</span>${badge}<span class="m">${esc(metaText)}</span>`;
   b.addEventListener('click', () => openSession(p.slug, s.file, b));
-  lazyTitle(p.slug, s.file, b);
+  lazyTitle(p.slug, s.file, b, s.agent);
   return b;
 }
+
+const agentLabel = (a) => ({ codex: 'Codex', claude: 'Claude', gemini: 'Gemini' }[a] || a);
 
 function renderSidebar() {
   const view = localStorage.lensView || 'date';
@@ -1073,7 +1082,7 @@ document.querySelectorAll('#view-toggle button').forEach((b) =>
 const titleQueue = [];
 const titleCache = new Map();
 let titleBusy = 0;
-function lazyTitle(project, file, btn) {
+function lazyTitle(project, file, btn, agent) {
   const key = project + '/' + file;
   const cached = titleCache.get(key);
   if (cached !== undefined) {
@@ -1082,7 +1091,7 @@ function lazyTitle(project, file, btn) {
   }
   titleQueue.push(async () => {
     try {
-      const m = await apiMeta(project, file);
+      const m = await apiMeta(project, file, agent);
       const t = m.title || m.firstPrompt || '';
       titleCache.set(key, t);
       if (t) { $('.t', btn).textContent = t; btn.title = t; }
@@ -1105,7 +1114,8 @@ async function openSession(project, file, btn) {
   if (btn) btn.classList.add('active');
   rememberUrl(`?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`);
   $('#title').textContent = 'Loading…';
-  const text = await apiSessionText(project, file);
+  const agent = btn && btn.dataset ? btn.dataset.agent : undefined;
+  const text = await apiSessionText(project, file, agent);
   loadSessionText(text, btn ? $('.t', btn).textContent : file);
 }
 

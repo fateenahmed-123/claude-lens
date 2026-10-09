@@ -1,8 +1,10 @@
-# claude-lens
+# Agent Lens
 
-A rich, minimal viewer for [Claude Code](https://claude.com/claude-code) CLI session transcripts.
+A rich, minimal viewer for your AI coding-agent sessions — [Claude Code](https://claude.com/claude-code) and [OpenAI Codex](https://openai.com/codex) — in one place.
 
-Claude Code records every session as a JSONL file under `~/.claude/projects/`. claude-lens turns those machine logs into a readable record: what you asked, what Claude thought, every tool call with its result, diffs for edits, subagent runs, token totals, and timing. All local, zero dependencies.
+Coding agents record every session as JSONL (Claude Code under `~/.claude/projects/`, Codex under `~/.codex/sessions/`). Agent Lens turns those machine logs into a readable record: what you asked, what the agent thought, every tool call with its result, diffs for edits, subagent runs, token totals, and timing. Sessions from different agents merge into one project view, each tagged with its agent, and **Highlights** turns a day's work across all of them into a standup-ready summary. All local, zero dependencies.
+
+> Formerly "Session Lens for Claude Code" — same extension, now multi-agent.
 
 ![claude-lens dark theme](docs/viewer-dark.png)
 
