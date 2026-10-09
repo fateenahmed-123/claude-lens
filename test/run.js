@@ -248,6 +248,20 @@ async function scanTests() {
   assert(cxUsage.models['gpt-5.5'] && cxUsage.models['gpt-5.5'].in === 90 && cxUsage.models['gpt-5.5'].cr === 10 && cxUsage.models['gpt-5.5'].out === 40, 'codex usage: uncached input, cache read, output');
   const cxHi = await hl.buildHighlights({ window: '7d', now: Date.parse('2026-07-01T11:00:00Z') });
   assert(cxHi.projects.length === 1 && cxHi.projects[0].tests.length >= 1, 'highlights span codex: pytest detected');
+
+  // Usage robustness (regression guards):
+  const cxAdapter = require('../lib/adapters/codex');
+  const noId = [
+    { timestamp: '2026-07-01T10:00:00Z', type: 'token_usage_record', payload: { usage: { input_tokens: 50, output_tokens: 7 } } },
+  ].map((o) => JSON.stringify(o)).join('\n');
+  const noIdEntries = cxAdapter.normalize(noId).entries.filter((e) => e.requestId && e.message.usage);
+  assert(noIdEntries.length === 1 && noIdEntries[0].requestId, 'usage record without response_id still gets a requestId');
+  const both = [
+    { timestamp: '2026-07-01T10:00:00Z', type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 99, output_tokens: 9 } } } },
+    { timestamp: '2026-07-01T10:00:01Z', type: 'token_usage_record', payload: { response_id: 'x1', usage: { input_tokens: 50, output_tokens: 7 } } },
+  ].map((o) => JSON.stringify(o)).join('\n');
+  const bothEntries = cxAdapter.normalize(both).entries.filter((e) => e.message && e.message.usage);
+  assert(bothEntries.length === 1 && bothEntries[0].message.usage.input_tokens === 50, 'token_count ignored when a usage record exists (no double count)');
   scan.setIncludeCodex(false); scan.setCodexRoots(null); scan.setRoot(null);
   fs.rmSync(cxRoot, { recursive: true, force: true });
   fs.rmSync(emptyClaude, { recursive: true, force: true });

@@ -93,14 +93,17 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/session') {
       const file = scan.resolveSession(url.searchParams.get('project'), url.searchParams.get('file'));
       if (!file) return json(res, 400, { error: 'bad path' });
-      const text = await scan.sessionText(file, url.searchParams.get('agent') || undefined);
+      const agent = url.searchParams.get('agent') || scan.agentOf(path.basename(file));
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8' });
-      return res.end(text);
+      // Claude transcripts stream (bounded memory, can be very large); only
+      // Codex needs the whole file read to normalize.
+      if (agent === 'codex') return res.end(await scan.sessionText(file, 'codex'));
+      return void fs.createReadStream(file).on('error', () => res.end()).pipe(res);
     }
 
     if (url.pathname === '/api/single') {
       if (!singleFile) return json(res, 404, { error: 'no file given' });
-      const text = await scan.sessionText(singleFile);
+      const text = await scan.sessionText(singleFile); // sniffs agent; single files are one-off
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8' });
       return res.end(text);
     }
