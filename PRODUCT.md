@@ -1,12 +1,13 @@
-# claude-lens
+# agent-lens
 
 register: product
 
 ## Product purpose
 
-A local viewer for Claude Code CLI session transcripts (the JSONL files under
-`~/.claude/projects/`). It turns a raw machine log into a readable record of
-what the agent did: what the user asked, what Claude thought, which tools ran,
+A local viewer for AI coding-agent session transcripts — the JSONL files Claude
+Code writes under `~/.claude/projects/` and Codex writes under
+`~/.codex/sessions/`. It turns a raw machine log into a readable record of what
+the agent did: what the user asked, what the agent thought, which tools ran,
 what they returned, and what it cost in time and tokens.
 
 ## Users

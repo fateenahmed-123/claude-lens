@@ -765,7 +765,7 @@ class DashboardProvider {
           <span id="count"></span></div>
         <div id="list"></div>
       </div>
-    </div>` : '<div class="empty">No Claude Code sessions found. They appear here once you use the Claude Code CLI.</div>'}
+    </div>` : '<div class="empty">No agent sessions found. They appear here once you use the Claude Code or Codex CLI.</div>'}
     <script>
       const vs = acquireVsCodeApi();
       const SESSIONS = ${payload};

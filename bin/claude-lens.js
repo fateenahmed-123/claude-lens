@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * claude-lens — local viewer for Claude Code CLI session transcripts.
+ * agent-lens — local viewer for AI coding-agent session transcripts.
  *
  * Zero dependencies. Serves public/index.html plus a small JSON API over
- * the JSONL session files Claude Code writes under ~/.claude/projects/.
+ * the JSONL session files Claude Code writes under ~/.claude/projects/ and
+ * Codex writes under ~/.codex/sessions/.
  *
  * Usage:
  *   claude-lens                     # browse every project on this machine
@@ -36,10 +37,11 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--dir' || a === '-d') dirs.push(args[++i]);
   else if (a === '--no-open') noOpen = true;
   else if (a === '--help' || a === '-h') {
-    console.log(`claude-lens [file.jsonl] [--dir path]... [--port N] [--no-open]
+    console.log(`agent-lens [file.jsonl] [--dir path]... [--port N] [--no-open]
 
-Visualize Claude Code CLI sessions. Reads ~/.claude/projects/ by default,
-or $CLAUDE_CONFIG_DIR/projects when that variable is set.
+Visualize AI coding-agent sessions (Claude Code and Codex). Reads
+~/.claude/projects/ and ~/.codex/sessions/ by default, or
+$CLAUDE_CONFIG_DIR/projects when that variable is set.
   --dir path   read sessions from a different folder (a projects tree
                or any folder containing .jsonl transcripts). Repeatable —
                pass --dir more than once to merge several locations.
@@ -93,14 +95,17 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/session') {
       const file = scan.resolveSession(url.searchParams.get('project'), url.searchParams.get('file'));
       if (!file) return json(res, 400, { error: 'bad path' });
-      const text = await scan.sessionText(file, url.searchParams.get('agent') || undefined);
+      const agent = url.searchParams.get('agent') || scan.agentOf(path.basename(file));
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8' });
-      return res.end(text);
+      // Claude transcripts stream (bounded memory, can be very large); only
+      // Codex needs the whole file read to normalize.
+      if (agent === 'codex') return res.end(await scan.sessionText(file, 'codex'));
+      return void fs.createReadStream(file).on('error', () => res.end()).pipe(res);
     }
 
     if (url.pathname === '/api/single') {
       if (!singleFile) return json(res, 404, { error: 'no file given' });
-      const text = await scan.sessionText(singleFile);
+      const text = await scan.sessionText(singleFile); // sniffs agent; single files are one-off
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8' });
       return res.end(text);
     }
